@@ -154,8 +154,21 @@ const skip = (sec) => {
 };
 $('back10').addEventListener('click', () => skip(-10));
 $('fwd10').addEventListener('click', () => skip(10));
+// 一時停止すると YouTube が動画の上に暗い表示（タイトル・共有・その他の動画など）を出す。
+// スマホでは動画に触れないと消えない（縦向きでは動画へのタップを止めているので消えない）ため、
+// 一時停止から再開するときは同じ位置で読み込み直して、表示をきれいにする
 const togglePlay = () => {
-  try { if (ytPlayer.getPlayerState() === window.YT.PlayerState.PLAYING) ytPlayer.pauseVideo(); else ytPlayer.playVideo(); } catch { /* noop */ }
+  try {
+    const S = window.YT.PlayerState; const st = ytPlayer.getPlayerState();
+    if (st === S.PLAYING || st === S.BUFFERING) { ytPlayer.pauseVideo(); return; }
+    if (st === S.PAUSED && current) {
+      const t = ytPlayer.getCurrentTime();
+      ccAppliedFor = null; // 字幕の状態も合わせ直す
+      ytPlayer.loadVideoById({ videoId: current.id, startSeconds: t });
+      return;
+    }
+    ytPlayer.playVideo();
+  } catch { /* noop */ }
 };
 $('playBtn').addEventListener('click', togglePlay);
 
