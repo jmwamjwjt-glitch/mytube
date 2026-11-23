@@ -28,21 +28,24 @@ function loadYouTubeApi() {
   return ytApiPromise;
 }
 
-async function loadIntoPlayer(id, start = 0) {
+// fresh: true … プレーヤーを作り直す（一時停止後の暗い表示を消すため）。字幕の状態はそのまま引き継ぐ
+async function loadIntoPlayer(id, start = 0, { fresh = false } = {}) {
   await loadYouTubeApi();
-  if (ytPlayer && ytCc === settings.cc && typeof ytPlayer.loadVideoById === 'function') {
+  if (!fresh && ytPlayer && ytCc === settings.cc && typeof ytPlayer.loadVideoById === 'function') {
     ytPlayer.loadVideoById({ videoId: id, startSeconds: start });
     return;
   }
+  const keepCc = fresh && ytPlayer ? ccOn : settings.cc;
   if (ytPlayer) { try { ytPlayer.destroy(); } catch { /* noop */ } }
   const host = h('div');
   $('frame').replaceChildren(host);
   ytCc = settings.cc;
-  setCcUi(settings.cc);
+  setCcUi(keepCc);
+  ccAppliedFor = null;
   ytPlayer = new YT.Player(host, {
     width: '100%', height: '100%', videoId: id,
     // controls: 0 … YouTube 側の操作ボタンを消し、MyTube の操作バー（動画の下）で操作する
-    playerVars: { autoplay: 1, playsinline: 1, controls: 0, fs: 0, rel: 0, iv_load_policy: 3, hl: 'ja', cc_lang_pref: 'ja', cc_load_policy: settings.cc ? 1 : 0, start: Math.floor(start) },
+    playerVars: { autoplay: 1, playsinline: 1, controls: 0, fs: 0, rel: 0, iv_load_policy: 3, hl: 'ja', cc_lang_pref: 'ja', cc_load_policy: keepCc ? 1 : 0, start: Math.floor(start) },
     events: {
       onReady: (e) => { try { e.target.setPlaybackRate(settings.speed); e.target.playVideo(); } catch { /* noop */ } },
       onStateChange: onYtState,
@@ -163,8 +166,7 @@ const togglePlay = () => {
     if (st === S.PLAYING || st === S.BUFFERING) { ytPlayer.pauseVideo(); return; }
     if (st === S.PAUSED && current) {
       const t = ytPlayer.getCurrentTime();
-      ccAppliedFor = null; // 字幕の状態も合わせ直す
-      ytPlayer.loadVideoById({ videoId: current.id, startSeconds: t });
+      loadIntoPlayer(current.id, t, { fresh: true }).catch(() => {});
       return;
     }
     ytPlayer.playVideo();
