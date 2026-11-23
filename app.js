@@ -1276,6 +1276,7 @@ function openPlayer(v, list, { keepMode = false } = {}) {
   if (!keepMode || playerMode === 'closed') showFullPlayer();
   $('player').hidden = false;
   $('player').dataset.short = isShort(v) ? '1' : ''; // ショートは縦長に表示
+  if (playerMode === 'mini') placeMini(); // 小窓のまま次の動画へ進んだとき、縦長／横長に合わせ直す
   renderPlayerInfo(v);
   const e = histGet(v.id);
   const start = settings.historyOn && e && !e.done && e.pos >= RESUME_MIN ? e.pos : 0;
@@ -1295,6 +1296,7 @@ function openPlayer(v, list, { keepMode = false } = {}) {
 function showFullPlayer() {
   const wasFull = playerMode === 'full';
   playerMode = 'full';
+  $('player').style.cssText = '';
   $('player').className = 'player full';
   $('player').hidden = false;
   document.body.classList.remove('has-mini');
@@ -1303,8 +1305,9 @@ function showFullPlayer() {
 function minimizePlayer() {
   if (playerMode !== 'full') return;
   playerMode = 'mini';
-  $('player').className = 'player mini' + miniCornerClass();
+  $('player').className = 'player mini';
   document.body.classList.add('has-mini');
+  placeMini();
 }
 function closePlayer() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -1313,6 +1316,7 @@ function closePlayer() {
   playerMode = 'closed';
   try { ytPlayer?.stopVideo(); } catch { /* noop */ }
   $('player').hidden = true;
+  $('player').style.cssText = '';
   document.body.classList.remove('has-mini');
   clearSleep();
   if ($('menuDialog').open) $('menuDialog').close();
@@ -1519,43 +1523,98 @@ $('pChannel').addEventListener('click', goCurrentChannel);
 $('pChAvBtn').addEventListener('click', goCurrentChannel);
 $('autoNextToggle').addEventListener('change', (e) => { settings.autoNext = e.target.checked; persist(); });
 $('pMin').addEventListener('click', () => minimizePlayer());
-// ---------- 小窓（ミニプレーヤー）：下のバーをドラッグして四隅に移動 ----------
-function miniCornerClass() {
-  const c = settings.miniCorner || 'bottom-right';
-  return (c.startsWith('top') ? ' at-top' : '') + (c.endsWith('left') ? ' at-left' : '');
+// ---------- 小窓（ミニプレーヤー） ----------
+// ・下のバー（タイトル部分）をドラッグ：好きな高さへ動かせる。左右は近い方の端に寄る。画面の外へ払うと閉じる
+// ・左端のつまみをドラッグ：大きさを変えられる（画面の内側・上へ引くほど大きく）
+// ・ショートは縦長の小窓になる
+const MINI_BAR_H = 38;
+const curShort = () => isShort(current || {});
+function miniLimits() {
+  const top = (document.querySelector('header')?.getBoundingClientRect().bottom || 60) + 8;
+  const bottom = (document.querySelector('.bottomnav')?.getBoundingClientRect().top || innerHeight) - 8;
+  return { top, bottom };
 }
+function clampMiniWidth(w) {
+  const { top, bottom } = miniLimits();
+  const maxH = bottom - top - MINI_BAR_H;
+  const maxW = curShort() ? Math.min(innerWidth - 16, maxH * 9 / 16) : Math.min(innerWidth - 16, maxH * 16 / 9);
+  return Math.round(Math.max(curShort() ? 140 : 160, Math.min(w, maxW)));
+}
+function miniWidth() {
+  const base = settings.miniW || Math.min(innerWidth * 0.58, 300);
+  return clampMiniWidth(curShort() ? base * 0.6 : base);
+}
+const miniHeightFor = (w) => Math.round(curShort() ? w * 16 / 9 : w * 9 / 16) + MINI_BAR_H;
+function miniSaveY(topPx, heightPx) {
+  const { top, bottom } = miniLimits();
+  return Math.min(1, Math.max(0, (topPx - top) / Math.max(1, bottom - top - heightPx)));
+}
+function placeMini() {
+  if (playerMode !== 'mini') return;
+  const p = $('player'); const w = miniWidth(); const ht = miniHeightFor(w);
+  const pos = settings.miniPos || { side: 'right', y: 1 };
+  const { top, bottom } = miniLimits();
+  p.style.width = w + 'px';
+  p.style.left = (pos.side === 'left' ? 8 : innerWidth - w - 8) + 'px';
+  p.style.top = Math.round(top + Math.max(0, bottom - top - ht) * pos.y) + 'px';
+}
+addEventListener('resize', placeMini);
+
 let miniDrag = null;
 let miniJustDragged = false;
-$('miniTitle').addEventListener('pointerdown', (e) => {
+const offRatio = (left, w) => 1 - Math.max(0, Math.min(left + w, innerWidth) - Math.max(left, 0)) / w;
+function miniPointerDown(e, mode) {
   if (playerMode !== 'mini') return;
   const r = $('player').getBoundingClientRect();
-  miniDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: r.left + r.width / 2, cy: r.top + r.height / 2, moved: false };
-  $('miniTitle').setPointerCapture(e.pointerId);
-});
-$('miniTitle').addEventListener('pointermove', (e) => {
-  if (!miniDrag || e.pointerId !== miniDrag.id) return;
-  const dx = e.clientX - miniDrag.x; const dy = e.clientY - miniDrag.y;
-  if (!miniDrag.moved && Math.hypot(dx, dy) < 8) return;
-  miniDrag.moved = true;
-  $('player').classList.add('dragging');
-  $('player').style.transform = `translate(${dx}px, ${dy}px)`;
-});
-const endMiniDrag = (e) => {
-  if (!miniDrag || e.pointerId !== miniDrag.id) return;
-  const d = miniDrag; miniDrag = null;
-  $('player').style.transform = '';
-  $('player').classList.remove('dragging');
+  miniDrag = { mode, id: e.pointerId, x: e.clientX, y: e.clientY, l: r.left, t: r.top, w: r.width, b: r.bottom, moved: false };
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 指を追えない環境でも動かせるように */ }
+}
+function miniPointerMove(e) {
+  const d = miniDrag; if (!d || e.pointerId !== d.id) return;
+  const dx = e.clientX - d.x; const dy = e.clientY - d.y;
+  if (!d.moved && Math.hypot(dx, dy) < 8) return;
+  d.moved = true;
+  const p = $('player');
+  p.classList.add('dragging');
+  if (d.mode === 'move') {
+    p.style.left = (d.l + dx) + 'px';
+    p.style.top = (d.t + dy) + 'px';
+    p.style.opacity = offRatio(d.l + dx, d.w) > 0.3 ? '0.45' : ''; // 外へ払いかけると薄くなる＝離すと閉じる
+  } else {
+    const side = settings.miniPos?.side || 'right';
+    const w = clampMiniWidth(d.w + (side === 'right' ? -dx : dx) - dy);
+    const ht = miniHeightFor(w);
+    p.style.width = w + 'px';
+    p.style.left = (side === 'left' ? 8 : innerWidth - w - 8) + 'px';
+    p.style.top = Math.max(miniLimits().top, d.b - ht) + 'px'; // 下端をそろえたまま大きさを変える
+  }
+}
+function miniPointerUp(e) {
+  const d = miniDrag; if (!d || e.pointerId !== d.id) return;
+  miniDrag = null;
+  const p = $('player');
+  p.classList.remove('dragging'); p.style.opacity = '';
   miniJustDragged = d.moved;
   if (!d.moved) return;
-  // 指を離した位置に一番近い角へ吸い付ける
-  const cx = d.cx + (e.clientX - d.x); const cy = d.cy + (e.clientY - d.y);
-  settings.miniCorner = `${cy < innerHeight / 2 ? 'top' : 'bottom'}-${cx < innerWidth / 2 ? 'left' : 'right'}`;
+  const r = p.getBoundingClientRect();
+  if (d.mode === 'move') {
+    if (offRatio(r.left, r.width) > 0.3) { closePlayer(); toast('プレーヤーを閉じました。'); return; }
+    settings.miniPos = { side: r.left + r.width / 2 < innerWidth / 2 ? 'left' : 'right', y: miniSaveY(r.top, r.height) };
+  } else {
+    settings.miniW = Math.round(curShort() ? r.width / 0.6 : r.width);
+    settings.miniPos = { side: settings.miniPos?.side || 'right', y: miniSaveY(r.top, r.height) };
+  }
   persist();
-  $('player').className = 'player mini' + miniCornerClass();
-};
-$('miniTitle').addEventListener('pointerup', endMiniDrag);
-$('miniTitle').addEventListener('pointercancel', endMiniDrag);
+  placeMini();
+}
+for (const [el, mode] of [[$('miniTitle'), 'move'], [$('miniGrip'), 'resize']]) {
+  el.addEventListener('pointerdown', (e) => miniPointerDown(e, mode));
+  el.addEventListener('pointermove', miniPointerMove);
+  el.addEventListener('pointerup', miniPointerUp);
+  el.addEventListener('pointercancel', miniPointerUp);
+}
 $('miniTitle').addEventListener('click', () => { if (miniJustDragged) { miniJustDragged = false; return; } showFullPlayer(); });
+$('miniGrip').addEventListener('click', () => { if (miniJustDragged) { miniJustDragged = false; return; } toast('つまみをドラッグすると、小窓の大きさを変えられます。'); });
 $('miniExpand').addEventListener('click', showFullPlayer);
 $('miniClose').addEventListener('click', closePlayer);
 $('miniPlay').addEventListener('click', togglePlay);
@@ -1798,7 +1857,7 @@ async function buildRecommendations(progress) {
       progress('掘り出し物を探しています…');
       const seenCh = new Set(watchHistory.map((e) => e.channelId));
       const params = { part: 'snippet', type: 'video', maxResults: 50, q: gemWords.join('|'), // | は「どれか」
-        publishedAfter: new Date(Date.now() - 365 * 86400000).toISOString() };
+        publishedAfter: new Date(Date.now() - 7 * 86400000).toISOString() }; // 過去1週間の動画
       if (settings.jaOnly) { params.relevanceLanguage = 'ja'; params.regionCode = 'JP'; }
       if (settings.minMin >= 20) params.videoDuration = 'long';
       const r = await api('search', params, 100);
@@ -1816,7 +1875,7 @@ async function buildRecommendations(progress) {
           const views = +v.statistics?.viewCount || 0; const likes = +v.statistics?.likeCount || 0;
           const subsN = subsOf.get(v.snippet.channelId);
           if (subsN == null || subsN > 50000) continue;      // 登録者5万人以下の小さめのチャンネル
-          if (views < 1000) continue;                         // ある程度は見られている
+          if (views < 300) continue;                          // ある程度は見られている（1週間なので低め）
           const likeRate = likes / views;
           if (likeRate < 0.02) continue;                      // 高評価率2%以上
           const reach = Math.min(views / Math.max(subsN, 100), 20); // 登録者数の何倍見られたか

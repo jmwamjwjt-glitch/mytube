@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)">
 <title>MyTube</title>
@@ -27,6 +27,7 @@
 [hidden] { display: none !important; }
 a { color: inherit; }
 html, body { margin: 0; }
+html { touch-action: manipulation; } /* ダブルタップでの拡大を止める */
 body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); -webkit-tap-highlight-color: transparent;
   padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)); }
 body.has-mini { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)); }
@@ -264,14 +265,16 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 
 /* ---------- Mini player ---------- */
 /* Floating window in a corner (drag the bar to move it). Buttons sit in the bar under the video, never on top of it. */
+/* Position and width are set by script (left/top/width), so the window can be dragged and resized */
 .player.mini { width: min(58vw, 300px); display: flex; flex-direction: column; border-radius: 12px; overflow: hidden;
-  background: var(--surface); box-shadow: 0 6px 24px rgba(0,0,0,.35);
-  right: max(8px, env(safe-area-inset-right, 0px)); left: auto;
-  bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom, 0px)); top: auto; }
-.player.mini.at-left { left: max(8px, env(safe-area-inset-left, 0px)); right: auto; }
-.player.mini.at-top { top: calc(var(--top-h) + 8px + env(safe-area-inset-top, 0px)); bottom: auto; }
+  background: var(--surface); box-shadow: 0 6px 24px rgba(0,0,0,.35); right: auto; bottom: auto;
+  transition: left .2s ease, top .2s ease, width .15s ease, opacity .15s; }
 .player.mini.dragging { transition: none; box-shadow: 0 10px 32px rgba(0,0,0,.45); }
+@media (prefers-reduced-motion: reduce) { .player.mini { transition: none; } }
 .player.mini .frame { width: 100%; height: auto; aspect-ratio: 16/9; }
+.player.mini[data-short="1"] .frame { aspect-ratio: 9/16; }
+.player.mini[data-short="1"] #miniExpand, .player.mini[data-short="1"] .mini-text .t { display: none; }
+.mini-bar .grip { cursor: nwse-resize; touch-action: none; color: var(--muted); }
 .player.mini .info, .player.mini .pctrl { display: none; }
 .mini-bar { display: none; }
 .player.mini .mini-bar { display: flex; align-items: center; height: 38px; padding: 0 2px 0 0; touch-action: none; }
@@ -559,6 +562,9 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
     </div>
   </div>
   <div class="mini-bar">
+    <button class="tbtn grip" id="miniGrip" type="button" aria-label="大きさを変える（ドラッグ）">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10V4h6M4 4l7 7M20 14v6h-6M20 20l-7-7"/></svg></span>
+    </button>
     <button class="mini-text" id="miniTitle" type="button"><div class="t" id="miniT"></div><div class="sub" id="miniSub"></div></button>
     <button class="tbtn" id="miniPlay" type="button" aria-label="一時停止"></button>
     <button class="tbtn" id="miniExpand" type="button" aria-label="大きく表示">
@@ -638,6 +644,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112313" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112314" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
