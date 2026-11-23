@@ -64,6 +64,11 @@ body.has-mini main { padding-bottom: calc(110px + env(safe-area-inset-bottom, 0p
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dur { position: absolute; right: 4px; bottom: 4px; background: rgba(0,0,0,.8); color: #fff;
   font-size: 11px; padding: 0 4px; border-radius: 3px; font-variant-numeric: tabular-nums; }
+.prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.45); }
+.prog span { display: block; height: 100%; background: var(--accent); }
+.wbadge { position: absolute; left: 4px; top: 4px; background: rgba(0,0,0,.78); color: #fff; font-size: 11px; padding: 0 5px; border-radius: 3px; }
+.item.watched .thumb img { opacity: .5; }
+.item.watched .title { color: var(--muted); }
 .meta { min-width: 0; }
 .title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; display: -webkit-box;
   -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; background: none; border: 0;
@@ -287,6 +292,11 @@ body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
       </select>
     </div>
 
+    <h3>再生履歴</h3>
+    <label class="check"><input type="checkbox" id="historyOn"> 再生履歴と再生位置を記録する（1秒以上再生した動画）</label>
+    <p class="hint" id="historyInfo"></p>
+    <div class="account-actions"><button type="button" id="clearHistory">再生履歴をすべて消す</button></div>
+
     <h3>検索の条件</h3>
     <div class="field">
       <label for="minMin">最短の長さ（分）</label>
@@ -416,6 +426,6 @@ body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112302" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112303" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
