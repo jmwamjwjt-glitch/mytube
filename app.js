@@ -8,7 +8,10 @@ const FEED_PER_CHANNEL = 5;
 const FEED_MAX = 150;
 const FEED_TTL = 30 * 60 * 1000; // 新着一覧を使い回す時間（30分）
 
-const DEFAULTS = { apiKey: '', clientId: '', minMin: 4, maxMin: 0, order: 'relevance', period: '',
+// OAuth クライアントID（公開されても問題ない値）。設定画面で別のIDを入れればそちらが優先されます
+const BUILTIN_CLIENT_ID = '716629250048-ju4p6ojm89eap92s31kle5877afkvd2f.apps.googleusercontent.com';
+
+const DEFAULTS = { apiKey: '', clientId: BUILTIN_CLIENT_ID, minMin: 4, maxMin: 0, order: 'relevance', period: '',
   minViews: 0, jaOnly: true, noLive: false, blocked: [] };
 
 // ---------- 保存 ----------
@@ -20,6 +23,7 @@ function save(key, value) {
 }
 function remove(key) { try { localStorage.removeItem(key); } catch { /* noop */ } }
 let settings = Object.assign({}, DEFAULTS, load('mytube.settings', {}));
+if (!settings.clientId) settings.clientId = BUILTIN_CLIENT_ID;
 const persist = () => save('mytube.settings', settings);
 
 function today() { return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Los_Angeles' }); } // APIの枠は太平洋時間でリセット
@@ -489,7 +493,7 @@ function renderBlocked() {
 }
 function readSettingsForm() {
   const num = (id) => Math.max(0, parseInt($(id).value, 10) || 0);
-  const newClient = $('clientId').value.trim();
+  const newClient = $('clientId').value.trim() || BUILTIN_CLIENT_ID;
   if (newClient !== settings.clientId) { tokenClient = null; settings.clientId = newClient; }
   settings.apiKey = $('apiKey').value.trim();
   settings.minMin = num('minMin');
