@@ -215,6 +215,8 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .player .frame { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; flex: none; }
 .player.full[data-short="1"] .frame { aspect-ratio: auto; height: min(64vh, calc(100vw * 16 / 9)); }
 .player .frame iframe, .player .frame > div { width: 100%; height: 100%; border: 0; display: block; }
+/* 縦向きの再生画面では動画へのタップを受け付けない（操作は下のバーで）。横向き全画面と小窓ではタップで再生・一時停止できる */
+.player.full:not(.fs) .frame iframe { pointer-events: none; }
 /* Own control bar under the video */
 .pctrl { flex: none; background: var(--bg); padding: 0 calc(var(--gut) - 6px) 2px; border-bottom: 1px solid var(--line); }
 #seek { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 18px; margin: 0; background: transparent; --p: 0%; }
@@ -764,6 +766,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112323" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112324" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
