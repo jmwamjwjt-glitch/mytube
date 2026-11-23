@@ -112,7 +112,7 @@ function recordProgress(v, pos, ended, duration) {
   if (!settings.historyOn || !v || !(ended || pos >= 1)) return;
   let e = histGet(v.id);
   if (e) watchHistory.splice(watchHistory.indexOf(e), 1);
-  else e = { id: v.id, title: v.title, channel: v.channel, channelId: v.channelId, thumb: v.thumb,
+  else e = { id: v.id, title: v.title, channel: v.channel, channelId: v.channelId, thumb: v.thumb, thumbs: v.thumbs,
     sec: v.sec, live: v.live, views: v.views, published: v.published, cat: v.cat };
   e.dismissed = false;
   const dur = v.sec || duration || 0;
@@ -320,7 +320,26 @@ function toItem(v, { lang = false, views = false, filter = true, skipBlocked = f
   return { id: v.id, sec, live, title: v.snippet.title, cat: v.snippet.categoryId,
     channel: v.snippet.channelTitle, channelId: v.snippet.channelId,
     published: v.snippet.publishedAt, views: v.statistics?.viewCount,
-    thumb: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url };
+    thumb: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url,
+    // 画面に合わせて選べるよう、用意されている大きいサイズも覚えておく（standard=640, maxres=1280 は無い動画もある）
+    thumbs: { h: v.snippet.thumbnails?.high?.url, s: v.snippet.thumbnails?.standard?.url, x: v.snippet.thumbnails?.maxres?.url } };
+}
+
+// サムネイル画像：端末の画面幅と画素密度に合わせて、ブラウザが一番合う解像度を選ぶ
+const THUMB_SIZES = {
+  row: '(min-width: 720px) 900px, 100vw',
+  compact: '(min-width: 720px) 380px, 42vw',
+  card: '(min-width: 720px) 260px, 62vw',
+};
+function thumbImg(v, kind) {
+  if (!v.id) return h('img', { src: v.thumb || 'icon.svg', alt: '', loading: 'lazy' });
+  const base = `https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/`;
+  const t = v.thumbs || {};
+  const set = [[v.thumb || base + 'mqdefault.jpg', 320], [t.h || base + 'hqdefault.jpg', 480]];
+  if (t.s) set.push([t.s, 640]);
+  if (t.x) set.push([t.x, 1280]);
+  return h('img', { src: t.h || base + 'hqdefault.jpg', srcset: set.map(([u, w]) => `${u} ${w}w`).join(', '),
+    sizes: THUMB_SIZES[kind], alt: '', loading: 'lazy', decoding: 'async' });
 }
 
 // 動画IDの順番を保ったまま詳細を取得
@@ -382,7 +401,7 @@ function renderRow(v, queue, { menu = null, compact = false, extra = null } = {}
   const goCh = () => openChannel(v.channelId, decode(v.channel));
   const row = h('article', { class: compact ? 'item compact' : 'item', 'data-channel': v.channelId, 'data-vid': v.id },
     h('button', { class: 'thumb', type: 'button', 'aria-label': '再生', onclick: play },
-      h('img', { src: v.thumb || 'icon.svg', alt: '', loading: 'lazy' }),
+      thumbImg(v, compact ? 'compact' : 'row'),
       h('span', { class: 'dur', text: durText(v) })),
     h('div', { class: 'meta' },
       compact ? null : h('button', { class: 'av-btn', type: 'button', 'aria-label': decode(v.channel), onclick: goCh }, avatarImg(v.channelId)),
@@ -733,7 +752,7 @@ function createPlaylistForm(onCreated) {
 }
 
 function playlistRow(p, own) {
-  const thumb = p.snippet.thumbnails?.medium?.url;
+  const thumb = p.snippet.thumbnails?.high?.url || p.snippet.thumbnails?.medium?.url;
   const privacy = { private: '非公開', unlisted: '限定公開', public: '公開' }[p.status?.privacyStatus] || '';
   return h('button', { class: 'lib-row', type: 'button', onclick: () => openPlaylist(p, own) },
     thumb ? h('img', { src: thumb, alt: '', loading: 'lazy' }) : h('span', { class: 'ph', text: '≡' }),
@@ -1600,7 +1619,7 @@ function renderCard(v, queue, { menu = null } = {}) {
   const play = () => openPlayer(v, queue);
   const card = h('article', { class: 'card', 'data-vid': v.id, 'data-channel': v.channelId },
     h('button', { class: 'thumb', type: 'button', 'aria-label': '再生', onclick: play },
-      h('img', { src: v.thumb || 'icon.svg', alt: '', loading: 'lazy' }), h('span', { class: 'dur', text: durText(v) })),
+      thumbImg(v, 'card'), h('span', { class: 'dur', text: durText(v) })),
     h('div', { class: 'card-meta' },
       h('div', { class: 'mtext' },
         h('button', { class: 'title', type: 'button', text: decode(v.title), onclick: play }),
