@@ -188,6 +188,18 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .account-actions button { height: 36px; padding: 0 16px; border-radius: 18px; border: 0; background: var(--chip); }
 #loginBtn { background: var(--inv-bg); color: var(--inv-fg); font-weight: 600; }
 .kw-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+/* Subscriptions: row of channel icons */
+.subrow { display: flex; gap: 14px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--gut)) 6px; padding: 8px var(--gut) 10px; align-items: flex-start; }
+.subrow::-webkit-scrollbar { display: none; }
+.subch { flex: none; width: 64px; border: 0; background: none; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.subch[data-dim="1"] { opacity: .4; }
+.subav { position: relative; width: 56px; height: 56px; border-radius: 50%; background: var(--chip); display: block; }
+.subav img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.subch[aria-pressed="true"] .subav { outline: 2px solid var(--fg); outline-offset: 2px; }
+.newdot { position: absolute; right: -1px; bottom: 1px; width: 14px; height: 14px; border-radius: 50%; background: #3ea6ff; border: 2px solid var(--bg); }
+.subname { font-size: 11px; width: 100%; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suball { flex: none; align-self: center; margin-top: -18px; border: 0; background: none; color: #3ea6ff; font-weight: 600; font-size: 14px; padding: 0 4px; }
+.ch-row .chav { width: 48px; height: 48px; aspect-ratio: auto; border-radius: 50%; }
 .kw-list li { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 12px; border-radius: 17px; background: var(--chip); font-size: 14px; }
 .kw-list button { height: 26px; padding: 0 10px; border: 0; border-radius: 13px; background: var(--bg); font-size: 12px; }
 .chips.wrap { flex-wrap: wrap; overflow: visible; padding: 0; }
@@ -354,6 +366,7 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   </section>
 
   <section id="feedView" hidden>
+    <div class="subrow" id="subRow" hidden></div>
     <div class="feed-head">
       <div class="status" id="feedStatus" aria-live="polite"></div>
       <button class="small" id="feedRefresh" type="button" hidden>更新</button>
@@ -433,6 +446,19 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
         <option value="1.75">1.75倍</option>
         <option value="2">2倍</option>
       </select>
+    </div>
+
+    <h3>登録チャンネルの新着</h3>
+    <div class="field">
+      <label for="feedTtl">自動で更新する間隔</label>
+      <select id="feedTtl">
+        <option value="5">5分</option>
+        <option value="10">10分（標準）</option>
+        <option value="15">15分</option>
+        <option value="30">30分</option>
+        <option value="60">1時間</option>
+      </select>
+      <span class="hint" id="feedTtlHint"></span>
     </div>
 
     <h3>再生履歴</h3>
@@ -664,6 +690,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112315" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112316" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>

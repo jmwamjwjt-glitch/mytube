@@ -7,7 +7,6 @@ const PAGE_TARGET = 15;   // 1回の読み込みで表示したい件数
 const MAX_PAGES = 3;      // 1回の読み込みで叩く検索ページ数の上限（1ページ = 100ユニット）
 const FEED_PER_CHANNEL = 5;
 const FEED_MAX = 150;
-const FEED_TTL = 30 * 60 * 1000; // 新着一覧を使い回す時間（30分）
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
 
 // OAuth クライアントID（公開されても問題ない値）。設定画面で別のIDを入れればそちらが優先されます
@@ -606,60 +605,125 @@ async function pool(items, limit, fn) {
 }
 
 async function fetchFeed() {
-  const channels = [];
+  const channels = []; // { id, title, thumb }
   let pageToken = '';
   do {
     const res = await apiAuth('GET', 'subscriptions', { part: 'snippet', mine: 'true', maxResults: 50, pageToken }, null, 1);
-    for (const s of res.items || []) channels.push(s.snippet.resourceId.channelId);
+    for (const s of res.items || []) {
+      channels.push({ id: s.snippet.resourceId.channelId, title: s.snippet.title, thumb: s.snippet.thumbnails?.default?.url || '' });
+    }
     pageToken = res.nextPageToken || '';
     setMsg(els.feed.status, `登録チャンネルを読み込み中…（${channels.length}件）`);
   } while (pageToken);
-  if (!channels.length) return { items: [], channels: 0 };
+  if (!channels.length) return { items: [], channels: 0, channelList: [] };
+  for (const c of channels) if (c.thumb) avatarCache[c.id] = c.thumb;
+  save('mytube.avatars', avatarCache);
 
   let done = 0;
-  const lists = await pool(channels, 6, async (id) => {
-    const res = await apiAuth('GET', 'playlistItems', { part: 'contentDetails', playlistId: 'UU' + id.slice(2), maxResults: FEED_PER_CHANNEL }, null, 1);
+  const lists = await pool(channels, 6, async (c) => {
+    const res = await apiAuth('GET', 'playlistItems', { part: 'contentDetails', playlistId: 'UU' + c.id.slice(2), maxResults: FEED_PER_CHANNEL }, null, 1);
     done++;
     if (done % 10 === 0) setMsg(els.feed.status, `新着を集めています…（${done}/${channels.length}チャンネル）`);
     return (res.items || []).map((it) => ({ id: it.contentDetails.videoId, at: it.contentDetails.videoPublishedAt || '' }));
   });
+  // チャンネルを「最近投稿した順」に並べる（上の丸いアイコンの列用）
+  const channelList = channels.map((c, i) => ({ ...c, latest: (lists[i] || []).reduce((m, x) => (x.at > m ? x.at : m), '') }))
+    .sort((a, b) => (b.latest > a.latest ? 1 : -1));
   const seen = new Set();
   const recent = lists.flat().filter((x) => x && x.id && !seen.has(x.id) && seen.add(x.id))
     .sort((a, b) => (b.at > a.at ? 1 : -1)).slice(0, FEED_MAX);
   const items = await fetchVideoItems(recent.map((x) => x.id), {});
   items.sort((a, b) => (b.published > a.published ? 1 : -1));
-  return { items, channels: channels.length };
+  return { items, channels: channels.length, channelList };
 }
 
 function showFeedEmpty() {
   els.feed.list.replaceChildren();
+  $('subRow').replaceChildren(); $('subRow').hidden = true;
   setMsg(els.feed.status, '');
   els.feed.empty.hidden = false;
   $('feedRefresh').hidden = true;
 }
 
+// ---------- 登録チャンネルの丸いアイコンの列 ----------
+let feedFilter = null;      // 選んでいるチャンネルID（null＝すべて）
+let feedSeenBase = null;    // 前回このタブを見た時刻（青い点＝それ以降に投稿があったチャンネル）
+function renderSubRow(cache) {
+  const row = $('subRow');
+  const list = (cache.channelList || []).filter((c) => !isBlocked(c.id));
+  row.hidden = !list.length;
+  if (!list.length) return;
+  const base = feedSeenBase || 0;
+  row.replaceChildren(
+    ...list.slice(0, 30).map((c) => h('button', { class: 'subch', type: 'button', 'aria-pressed': String(feedFilter === c.id),
+      'data-dim': feedFilter && feedFilter !== c.id ? '1' : null,
+      onclick: () => { feedFilter = feedFilter === c.id ? null : c.id; renderFeed(load('mytube.feed', null)); } },
+      h('span', { class: 'subav' },
+        c.thumb ? h('img', { src: c.thumb, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null,
+        base && c.latest && new Date(c.latest).getTime() > base ? h('span', { class: 'newdot', 'aria-label': '新しい動画あり' }) : null),
+      h('span', { class: 'subname', text: decode(c.title) }))),
+    h('button', { class: 'suball', type: 'button', text: 'すべて', onclick: () => openSubscriptionList(cache) }));
+}
+
+function openSubscriptionList(cache) {
+  const list = (cache.channelList || []).slice().sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+  openDetail(`登録チャンネル（${list.length}）`, (box) => {
+    const sortBtn = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': '並び順', style: 'margin-bottom:12px' });
+    const rows = h('div', { class: 'lib-rows' });
+    const draw = (mode) => {
+      const arr = mode === 'new' ? (cache.channelList || []).slice() : list;
+      sortBtn.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === mode)));
+      rows.replaceChildren(...arr.map((c) => h('button', { class: 'lib-row ch-row', type: 'button', onclick: () => openChannel(c.id, decode(c.title)) },
+        c.thumb ? h('img', { class: 'chav', src: c.thumb, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : h('span', { class: 'chav' }),
+        h('span', {}, h('span', { class: 't', text: decode(c.title) }), h('br'),
+          h('span', { class: 'sub', text: c.latest ? `最新の投稿：${fmtAgo(c.latest)}` : '最近の投稿なし' })))));
+    };
+    sortBtn.append(
+      h('button', { type: 'button', role: 'radio', 'data-mode': 'name', text: '名前順', onclick: () => draw('name') }),
+      h('button', { type: 'button', role: 'radio', 'data-mode': 'new', text: '最近投稿した順', onclick: () => draw('new') }));
+    box.append(sortBtn, rows);
+    draw('name');
+  });
+}
+
 function renderFeed(cache) {
+  if (!cache) return;
   els.feed.empty.hidden = true;
-  renderVideos(els.feed.list, cache.items.filter((v) => !isBlocked(v.channelId)));
+  renderSubRow(cache);
+  const ch = feedFilter && (cache.channelList || []).find((c) => c.id === feedFilter);
+  if (feedFilter && !ch) feedFilter = null;
+  const items = cache.items.filter((v) => !isBlocked(v.channelId) && (!feedFilter || v.channelId === feedFilter));
+  renderVideos(els.feed.list, items);
   const t = new Date(cache.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-  setMsg(els.feed.status, cache.items.length
-    ? `${cache.channels}チャンネルの新着 ${els.feed.list.querySelectorAll('[data-vid]').length}件（${t} 更新・長さなどの条件を適用済み）`
-    : '新着が見つかりませんでした。');
+  if (ch) {
+    els.feed.status.replaceChildren(`${decode(ch.title)} の新着 ${items.length}件 ・ `,
+      h('button', { class: 'link', type: 'button', text: 'チャンネルを開く', onclick: () => openChannel(ch.id, decode(ch.title)) }));
+    els.feed.status.classList.remove('error');
+  } else {
+    setMsg(els.feed.status, cache.items.length
+      ? `${cache.channels}チャンネルの新着 ${els.feed.list.querySelectorAll('[data-vid]').length}件（${t} 更新）`
+      : '新着が見つかりませんでした。');
+  }
   $('feedRefresh').hidden = false;
 }
 
-async function loadFeed(force) {
+const feedTtl = () => (settings.feedTtlMin || 10) * 60 * 1000;
+async function loadFeed(force, { quiet = false } = {}) {
   if (state.feedLoading) return;
   if (!isLoggedIn()) { showFeedEmpty(); return; }
+  if (feedSeenBase == null) { feedSeenBase = load('mytube.feedSeen', 0); save('mytube.feedSeen', Date.now()); }
   const cache = load('mytube.feed', null);
-  if (!force && cache && Date.now() - cache.at < FEED_TTL) { renderFeed(cache); return; }
+  const stale = !cache || !cache.channelList || Date.now() - cache.at >= feedTtl();
+  if (!force && !stale) { renderFeed(cache); return; }
+  if (quiet && !tokenValid()) { if (cache) renderFeed(cache); return; } // 自動更新ではログイン画面を出さない
   state.feedLoading = true;
   els.feed.empty.hidden = true;
+  if (cache?.channelList) renderFeed(cache);
   setMsg(els.feed.status, '新着を読み込んでいます…');
   try {
     await ensureToken();
     const res = await fetchFeed();
-    const fresh = { at: Date.now(), items: res.items, channels: res.channels };
+    const fresh = { at: Date.now(), items: res.items, channels: res.channels, channelList: res.channelList };
     save('mytube.feed', fresh);
     renderFeed(fresh);
   } catch (e) {
@@ -669,6 +733,10 @@ async function loadFeed(force) {
     state.feedLoading = false;
   }
 }
+// アプリに戻ってきたとき、登録チャンネルを見ていて古くなっていれば自動で更新
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.tab === 'feed' && !detailStack.length) loadFeed(false, { quiet: true });
+});
 
 // ---------- 戻るボタンの管理 ----------
 const nav = [];
@@ -1039,6 +1107,8 @@ function openSettings() {
   $('cc').checked = settings.cc;
   $('speed').value = String(settings.speed);
   $('historyOn').checked = settings.historyOn;
+  $('feedTtl').value = String(settings.feedTtlMin || 10);
+  updateFeedTtlHint();
   $('historyInfo').textContent = `いま ${watchHistory.length}本記録しています（最新${HISTORY_MAX}本まで・このスマホの中だけに保存）。`;
   $('accountMsg').textContent = '';
   renderBlocked();
@@ -1068,6 +1138,7 @@ function readSettingsForm() {
   settings.cc = $('cc').checked;
   settings.speed = parseFloat($('speed').value) || 1;
   settings.historyOn = $('historyOn').checked;
+  settings.feedTtlMin = parseInt($('feedTtl').value, 10) || 10;
   persist();
   updateSpeedLabel();
   if (settings.clientId) loadGis().then(initTokenClient).catch(() => {});
@@ -1088,6 +1159,17 @@ $('loginBtn').addEventListener('click', () => {
     .catch((e) => { $('accountMsg').textContent = e.message; });
 });
 $('logoutBtn').addEventListener('click', () => { logout(); $('accountMsg').textContent = 'ログアウトしました。'; });
+// 新着の更新間隔ごとの使用量の目安（登録チャンネル数から計算）
+function updateFeedTtlHint() {
+  const n = load('mytube.feed', null)?.channels || 0;
+  const min = parseInt($('feedTtl').value, 10) || 10;
+  const per = n ? n + Math.ceil(n / 50) * 2 + 2 : 0;
+  $('feedTtlHint').textContent = n
+    ? `登録${n}チャンネル → 1回の更新で約${per}ユニット。登録チャンネルのタブを1時間開いたままなら最大 約${Math.round(per * 60 / min).toLocaleString('ja-JP')}ユニット。タブを開いた時・アプリに戻った時にだけ更新します。`
+    : '1回の更新で「登録チャンネル数」とほぼ同じユニットを使います。タブを開いた時・アプリに戻った時にだけ更新します。';
+}
+$('feedTtl').addEventListener('change', updateFeedTtlHint);
+
 // ---------- テーマ（端末に合わせる／ライト／ダーク） ----------
 const THEME_LABELS = { system: '端末に合わせる', light: 'ライト', dark: 'ダーク' };
 function applyTheme(t) {
