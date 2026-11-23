@@ -1372,16 +1372,26 @@ $('playBtn').addEventListener('click', togglePlay);
 // 字幕のオン・オフ（日本語を優先）
 let ccOn = false;
 function setCcUi(on) { ccOn = on; $('ccBtn').setAttribute('aria-pressed', String(on)); }
-$('ccBtn').addEventListener('click', () => {
+// YouTube のプレーヤーは「前に字幕をオンにした」ことを覚えていて、次の動画でも勝手に字幕を出すことがある。
+// そのため、動画が始まるたびに CC ボタンの状態（ccOn）に合わせ直す
+let ccAppliedFor = null;
+function applyCc() {
   if (!ytPlayer) return;
   try {
-    if (ccOn) { ytPlayer.unloadModule('captions'); setCcUi(false); toast('字幕：オフ'); }
-    else {
+    if (ccOn) {
       ytPlayer.loadModule('captions');
       setTimeout(() => { try { ytPlayer.setOption('captions', 'track', { languageCode: 'ja' }); } catch { /* noop */ } }, 500);
-      setCcUi(true); toast('字幕：オン（字幕がない動画では表示されません）');
+    } else {
+      try { ytPlayer.setOption('captions', 'track', {}); } catch { /* noop */ }
+      ytPlayer.unloadModule('captions');
     }
-  } catch { toast('この動画では字幕を切り替えられませんでした。'); }
+  } catch { /* 字幕のない動画など */ }
+}
+$('ccBtn').addEventListener('click', () => {
+  if (!ytPlayer) return;
+  setCcUi(!ccOn);
+  applyCc();
+  toast(ccOn ? '字幕：オン（字幕がない動画では表示されません）' : '字幕：オフ');
 });
 
 // ---------- 全画面 ----------
@@ -1412,21 +1422,31 @@ document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) { try { screen.orientation?.unlock?.(); } catch { /* noop */ } }
   updateFsMode();
 });
-$('fsBtn').addEventListener('click', async () => {
-  if (isFs()) { // 終了
-    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => {}); return; }
-    try { await screen.orientation.lock('portrait'); setTimeout(() => { try { screen.orientation.unlock(); } catch { /* noop */ } }, 1500); }
-    catch { toast('スマホを縦向きに戻すと、全画面が終わります。'); }
-    return;
+// 全画面をやめるとき：横向きの固定を外して縦に戻す（固定したままだと、小さくした後もずっと横向きになる）
+let orientLocked = false;
+async function leaveFullscreen({ quiet = false } = {}) {
+  if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+  if (orientLocked || landscapeMq.matches) {
+    try {
+      await screen.orientation.lock('portrait');
+      setTimeout(() => { try { screen.orientation.unlock(); } catch { /* noop */ } }, 1500);
+    } catch {
+      try { screen.orientation?.unlock?.(); } catch { /* noop */ }
+      if (!quiet && landscapeMq.matches) toast('スマホを縦向きに戻すと、全画面が終わります。');
+    }
   }
+  orientLocked = false;
+}
+$('fsBtn').addEventListener('click', async () => {
+  if (isFs()) { await leaveFullscreen(); return; } // 終了
   if (settings.fsChrome) { // Chrome の全画面（画面いっぱい・案内が出る）
     try {
       await $('player').requestFullscreen({ navigationUI: 'hide' });
-      try { await screen.orientation?.lock?.('landscape'); } catch { /* 向きを固定できない端末もある */ }
+      try { await screen.orientation?.lock?.('landscape'); orientLocked = true; } catch { /* 向きを固定できない端末もある */ }
     } catch { toast('全画面にできませんでした。'); }
     return;
   }
-  try { await screen.orientation.lock('landscape'); }
+  try { await screen.orientation.lock('landscape'); orientLocked = true; }
   catch { toast('スマホを横向きにすると全画面になります（画面の自動回転をオンにしてください）。'); }
 });
 
@@ -1436,6 +1456,7 @@ function onYtState(e) {
     if (!progressTimer) progressTimer = setInterval(() => saveCurrentProgress(false), 3000);
     setTimeout(() => saveCurrentProgress(false), 1200); // 1秒再生した時点で記録
     try { if (ytPlayer.getPlaybackRate() !== settings.speed) ytPlayer.setPlaybackRate(settings.speed); } catch { /* noop */ }
+    try { const vid = ytPlayer.getVideoData?.().video_id; if (vid && vid !== ccAppliedFor) { ccAppliedFor = vid; applyCc(); } } catch { /* noop */ }
     setMiniPlaying(true);
   } else {
     stopProgressTimer();
@@ -1494,13 +1515,14 @@ function showFullPlayer() {
 }
 function minimizePlayer() {
   if (playerMode !== 'full') return;
+  if (isFs() || orientLocked) leaveFullscreen({ quiet: true }); // 全画面から小さくしたら縦に戻す
   playerMode = 'mini';
   $('player').className = 'player mini';
   document.body.classList.add('has-mini');
   placeMini();
 }
 function closePlayer() {
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (isFs() || orientLocked) leaveFullscreen({ quiet: true });
   saveCurrentProgress(false);
   stopProgressTimer();
   playerMode = 'closed';

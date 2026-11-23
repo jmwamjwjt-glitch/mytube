@@ -238,7 +238,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .player.fs, .player:fullscreen { background: #000; display: grid; position: fixed; inset: 0;
   padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   grid-template-columns: minmax(64px, 1fr) auto minmax(64px, 1fr); grid-template-rows: minmax(0, 1fr) 30px;
-  grid-template-areas: "left video right" "left seek right";
+  grid-template-areas: "left video right" "left seek time";
   --fg: #fff; --line: #444; --chip: #222; --muted: #bbb; color: #fff; }
 .player.fs .frame, .player:fullscreen .frame { grid-area: video; height: 100% !important; width: auto; aspect-ratio: 16/9 !important;
   max-width: calc(100vw - 128px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); justify-self: center; align-self: center; }
@@ -249,9 +249,12 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .player.fs #seek, .player:fullscreen #seek { grid-area: seek; align-self: center; }
 .player.fs .spacer, .player:fullscreen .spacer { display: none; }
 .player.fs .pc-left, .player:fullscreen .pc-left { grid-area: left; flex-direction: column; justify-content: center; gap: 14px; }
-.player.fs .pc-right, .player:fullscreen .pc-right { grid-area: right; flex-direction: column; justify-content: center; gap: 14px; }
+.player.fs .pc-right, .player:fullscreen .pc-right { grid-area: right; flex-direction: column; justify-content: space-between; padding: 8px 0; }
+/* 全画面では再生・スキップは動画のタップで足りるので出さない */
+.player.fs #back10, .player.fs #playBtn, .player.fs #fwd10,
+.player:fullscreen #back10, .player:fullscreen #playBtn, .player:fullscreen #fwd10 { display: none; }
 .player.fs #pMin, .player:fullscreen #pMin { position: absolute; top: 8px; left: calc(8px + env(safe-area-inset-left, 0px)); }
-.player.fs .ptime, .player:fullscreen .ptime { margin: 0; font-size: 11px; line-height: 1.35; text-align: center; white-space: normal; max-width: 64px; }
+.player.fs .ptime, .player:fullscreen .ptime { grid-area: time; align-self: center; justify-self: start; margin: 0 0 0 8px; font-size: 12px; white-space: nowrap; }
 .player.fs .cbtn, .player:fullscreen .cbtn { width: 48px; height: 48px; }
 .player.fs .cbtn.big .ic, .player:fullscreen .cbtn.big .ic { width: 34px; height: 34px; }
 .player.fs #back10 .ic, .player.fs #fwd10 .ic, .player:fullscreen #back10 .ic, .player:fullscreen #fwd10 .ic { width: 30px; height: 30px; }
@@ -633,8 +636,8 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
       </button>
       </div>
       <span class="spacer"></span>
-      <div class="pc-right">
       <span class="ptime" id="ptime">0:00 / 0:00</span>
+      <div class="pc-right">
       <button class="cbtn" id="ccBtn" type="button" aria-label="字幕" aria-pressed="false"><span class="cc">CC</span></button>
       <button class="cbtn" id="fsBtn" type="button" aria-label="全画面">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></span>
@@ -740,6 +743,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112321" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112322" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
