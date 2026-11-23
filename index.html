@@ -393,8 +393,15 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
 .boot-err button { margin-left: 8px; padding: 4px 12px; border-radius: 14px; border: 0; background: var(--accent-fg); color: var(--accent); font-weight: 700; }
 
 @media (min-width: 720px) {
-  main { max-width: 900px; margin: 0 auto; }
+  main { max-width: 1800px; margin: 0 auto; }
   .item:not(.compact) .thumb { width: 100%; margin: 0; border-radius: 12px; }
+  /* タブレットなど広い画面では、動画を横に何本か並べる（YouTube と同じ並び方） */
+  main .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); column-gap: 16px; align-items: start; }
+  main .list:has(> .item.compact) { grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); }
+  main .list > :not(.item) { grid-column: 1 / -1; } /* 見出し・ショートの棚・「もっと見る」などは横いっぱい */
+  main .list > .item { margin-bottom: 24px; }
+  .card { max-width: 300px; }
+  .short-card { max-width: 200px; }
   .player.full .frame { max-width: 960px; margin: 0 auto; }
   .player .info { max-width: 960px; margin: 0 auto; width: 100%; }
 }
@@ -805,18 +812,18 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- 機能ごとのファイル。この順番で読み込む（?v= を更新のたびに変えると、スマホに古いファイルが残らない） -->
-<script src="js/core.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/auth-api.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/videos.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/feed.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/pages.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/settings.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/search-tools.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/player.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/gestures.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/comments-chat.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/home.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/sync.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/main.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/core.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/auth-api.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/videos.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/feed.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/pages.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/settings.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/search-tools.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/player.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/gestures.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/comments-chat.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/home.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/sync.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/main.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
