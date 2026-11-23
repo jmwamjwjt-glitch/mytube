@@ -9,7 +9,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <style>
-/* Layout: one column, sticky search bar on top, filter chips under it, results list, bottom sheet for settings, full-screen player overlay */
+/* Layout: sticky header (search + tabs + chips), one-column lists, detail pages under the header, full-screen player that shrinks to a bottom mini player */
 :root {
   --bg: #f6f6f8; --surface: #ffffff; --fg: #17181c; --muted: #646874;
   --line: #e1e2e8; --accent: #d6213b; --accent-fg: #ffffff; --chip: #ececf1;
@@ -26,7 +26,7 @@ a { color: inherit; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font);
   padding-bottom: env(safe-area-inset-bottom, 0px); -webkit-tap-highlight-color: transparent; }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -42,6 +42,11 @@ header { position: sticky; top: 0; z-index: 10; background: var(--bg);
 .icon-btn { width: 42px; height: 42px; flex: none; border: 1px solid var(--line); border-radius: 50%;
   background: var(--surface); display: grid; place-items: center; }
 .icon-btn svg { width: 20px; height: 20px; }
+.avatar { overflow: hidden; padding: 0; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.tabs { display: flex; gap: 4px; margin-top: 8px; }
+.tab { flex: 1; min-width: 0; height: 36px; white-space: nowrap; font-size: 14px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-weight: 600; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
 .chips { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { flex: none; padding: 4px 12px; border-radius: 14px; background: var(--chip); font-size: 13px;
@@ -49,8 +54,9 @@ header { position: sticky; top: 0; z-index: 10; background: var(--bg);
 .chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
 main { padding: 8px max(12px, env(safe-area-inset-right, 0px)) 24px max(12px, env(safe-area-inset-left, 0px)); }
+body.has-mini main { padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 .status { color: var(--muted); font-size: 13px; padding: 6px 2px; }
-.status.error { color: var(--accent); }
+.status.error, .hint.error { color: var(--accent); }
 .list { display: flex; flex-direction: column; gap: 14px; }
 .item { display: grid; grid-template-columns: 44% 1fr; gap: 10px; align-items: start; }
 .thumb { position: relative; display: block; border: 0; padding: 0; background: var(--chip);
@@ -63,11 +69,44 @@ main { padding: 8px max(12px, env(safe-area-inset-right, 0px)) 24px max(12px, en
   -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; background: none; border: 0;
   padding: 0; text-align: left; }
 .sub { color: var(--muted); font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
+.link { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .block { margin-top: 4px; background: none; border: 0; padding: 2px 0; color: var(--muted); font-size: 12px; text-decoration: underline; }
+.row-ctl { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.row-ctl button { padding: 2px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; }
 .more { margin: 16px auto 0; display: block; padding: 10px 22px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
 .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+.feed-head { display: flex; align-items: center; gap: 8px; }
+.feed-head .status { flex: 1; min-width: 0; }
+.small { flex: none; padding: 4px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
+.primary-btn { padding: 8px 18px; border-radius: 18px; border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 700; }
 
-/* Settings sheet */
+/* Library & detail pages */
+.lib-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; }
+.lib-row img, .lib-row .ph { width: 96px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: var(--chip); flex: none; }
+.lib-row .ph { display: grid; place-items: center; color: var(--accent); font-weight: 700; }
+.lib-row .t { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.lib-rows { display: flex; flex-direction: column; gap: 8px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 8px; }
+.section-head h2 { margin: 0; font-size: 16px; }
+.form-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.form-row input, .form-row select { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); min-width: 0; }
+.form-row input { flex: 1 1 160px; }
+.detail-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.detail-bar h1 { margin: 0; font-size: 17px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.back { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); flex: none; font-size: 18px; }
+.detail-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.detail-head .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.ch-head { display: flex; gap: 12px; align-items: center; }
+.ch-head img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex: none; background: var(--chip); }
+.ch-head .n { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
+.subtabs { display: flex; gap: 6px; margin: 8px 0; }
+.subtabs button { padding: 4px 14px; border-radius: 14px; border: 1px solid transparent; background: var(--chip); font-size: 13px; }
+.subtabs button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.prewrap { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.sub-btn { padding: 6px 16px; border-radius: 18px; border: 0; background: var(--fg); color: var(--bg); font-weight: 700; font-size: 13px; flex: none; }
+.sub-btn[aria-pressed="true"] { background: var(--chip); color: var(--fg); }
+
+/* Dialogs */
 dialog { border: 0; padding: 0; background: transparent; max-width: 100%; max-height: 100%; }
 dialog::backdrop { background: rgba(0,0,0,.45); }
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto;
@@ -86,35 +125,71 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 .sheet-actions { display: flex; gap: 8px; margin-top: 16px; }
 .sheet-actions button { flex: 1; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
 .sheet-actions .primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
-
-/* Player */
-.player { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column;
-  padding-top: env(safe-area-inset-top, 0px); }
-.player .frame { width: 100%; aspect-ratio: 16/9; background: #000; }
-.player iframe { width: 100%; height: 100%; border: 0; display: block; }
-.player .info { padding: 12px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); overflow-y: auto; }
-.player h2 { margin: 0 0 6px; font-size: 16px; }
-.player .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-.player .actions a, .player .actions button { padding: 8px 14px; border-radius: 18px; background: var(--chip); border: 0; text-decoration: none; font-size: 13px; }
-.player .close { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-  width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 22px; }
-.avatar { overflow: hidden; padding: 0; }
-.avatar img { width: 100%; height: 100%; object-fit: cover; }
-.tabs { display: flex; gap: 4px; margin-top: 8px; }
-.tab { flex: 1; height: 36px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-weight: 600; }
-.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
-.feed-head { display: flex; align-items: center; gap: 8px; }
-.feed-head .status { flex: 1; min-width: 0; }
-.refresh { flex: none; padding: 4px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
 .account-actions { display: flex; gap: 8px; }
 .account-actions button { height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
 #loginBtn { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
-.player .actions #pLike[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
-.pmsg { margin: 10px 0 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
+.menu-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.menu-list button { width: 100%; text-align: left; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
+.menu-list button[aria-current="true"] { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+/* Player: full screen */
+.player { position: fixed; z-index: 50; background: var(--bg); }
+.player.full { inset: 0; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+.player .frame { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; flex: none; }
+.player .frame iframe, .player .frame > div { width: 100%; height: 100%; border: 0; display: block; }
+.mini-cover { position: absolute; inset: 0; border: 0; background: transparent; display: none; }
+.player .info { flex: 1; overflow-y: auto; padding: 8px max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.ptools { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.ptools button { padding: 4px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; }
+.player h2 { margin: 0 0 4px; font-size: 16px; line-height: 1.4; }
+.pchannel { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.pchannel .link { font-weight: 700; min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.actions::-webkit-scrollbar { display: none; }
+.actions a, .actions button { flex: none; padding: 8px 14px; border-radius: 18px; background: var(--chip); border: 0; text-decoration: none; font-size: 13px; white-space: nowrap; }
+.actions [aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.pmsg { margin: 8px 0 0; font-size: 13px; color: var(--muted); min-height: 1.5em; }
 .pmsg.error { color: var(--accent); }
-.pl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.pl-list button { width: 100%; text-align: left; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
-@media (min-width: 720px) { main, header .inner { max-width: 820px; margin: 0 auto; } .item { grid-template-columns: 240px 1fr; } }
+.next-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); margin-top: 6px; }
+.next-row .t { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pblock { margin-top: 16px; }
+.pblock h3 { margin: 0 0 8px; font-size: 14px; }
+.chapters { display: flex; flex-direction: column; gap: 4px; }
+.chapters button { display: flex; gap: 10px; text-align: left; padding: 6px 8px; border: 0; border-radius: 8px; background: var(--surface); }
+.chapters .ts { color: var(--accent); font-variant-numeric: tabular-nums; flex: none; font-weight: 700; }
+details.desc summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.desc .prewrap { margin-top: 8px; }
+
+/* Comments */
+.compose { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.compose textarea { width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); resize: vertical; }
+.compose .acts { display: flex; justify-content: flex-end; gap: 8px; }
+.comments { display: flex; flex-direction: column; gap: 14px; }
+.cmt .who { font-size: 12px; color: var(--muted); }
+.cmt .who b { color: var(--fg); }
+.cmt .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; margin: 2px 0; }
+.cmt .cacts { display: flex; gap: 12px; font-size: 12px; color: var(--muted); align-items: center; flex-wrap: wrap; }
+.cmt .cacts button { background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
+.replies { margin: 8px 0 0 16px; padding-left: 10px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+
+/* Player: mini */
+.player.mini { left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); background: var(--surface);
+  padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); box-shadow: 0 -4px 16px rgba(0,0,0,.12); }
+.player.mini .frame { width: 128px; border-radius: 6px; overflow: hidden; }
+.player.mini .mini-cover { display: block; }
+.player.mini .info { display: none; }
+.mini-bar { display: none; }
+.player.mini .mini-bar { display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px; }
+.mini-bar .t { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; text-align: left; background: none; border: 0; padding: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mini-bar .mb { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--chip); flex: none; font-size: 16px; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 80;
+  background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 13px; max-width: calc(100% - 32px); box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
+@media (min-width: 720px) { main, header .inner { max-width: 820px; margin: 0 auto; } .item { grid-template-columns: 240px 1fr; }
+  .player.full .frame { max-width: 960px; margin: 0 auto; } }
+@media (prefers-reduced-motion: no-preference) { .toast { transition: opacity .2s; } }
 </style>
 </head>
 <body>
@@ -133,6 +208,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-tab="search" aria-selected="true">検索</button>
       <button class="tab" role="tab" data-tab="feed" aria-selected="false">登録チャンネル</button>
+      <button class="tab" role="tab" data-tab="library" aria-selected="false">ライブラリ</button>
     </div>
     <div class="chips" id="chips" aria-label="クイックフィルタ"></div>
   </div>
@@ -145,10 +221,11 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <button class="more" id="more" hidden>さらに読み込む</button>
     <div class="empty" id="empty">キーワードを入れて検索してください。<br>右上の設定ボタンで、APIキーと絞り込み条件を設定できます。</div>
   </section>
+
   <section id="feedView" hidden>
     <div class="feed-head">
       <div class="status" id="feedStatus" aria-live="polite"></div>
-      <button class="refresh" id="feedRefresh" type="button" hidden>更新</button>
+      <button class="small" id="feedRefresh" type="button" hidden>更新</button>
     </div>
     <div class="list" id="feedList"></div>
     <div class="empty" id="feedEmpty">
@@ -156,6 +233,18 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       長さの条件（ショート除外など）と除外チャンネルも適用されます。
       <button class="more" id="feedLogin" type="button">Googleでログイン</button>
     </div>
+  </section>
+
+  <section id="libraryView" hidden>
+    <div id="libContent"></div>
+  </section>
+
+  <section id="detailView" hidden>
+    <div class="detail-bar">
+      <button class="back" id="detailBack" type="button" aria-label="戻る">←</button>
+      <h1 id="detailTitle"></h1>
+    </div>
+    <div id="detailBody"></div>
   </section>
 </main>
 
@@ -179,6 +268,21 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <button type="button" id="logoutBtn" hidden>ログアウト</button>
     </div>
     <p class="hint" id="accountMsg" aria-live="polite"></p>
+
+    <h3>再生</h3>
+    <label class="check"><input type="checkbox" id="autoNext"> 終わったら次の動画を自動で再生</label>
+    <label class="check"><input type="checkbox" id="cc"> 字幕を最初からオンにする</label>
+    <div class="field">
+      <label for="speed">いつもの再生速度</label>
+      <select id="speed">
+        <option value="0.75">0.75倍</option>
+        <option value="1">1倍（標準）</option>
+        <option value="1.25">1.25倍</option>
+        <option value="1.5">1.5倍</option>
+        <option value="1.75">1.75倍</option>
+        <option value="2">2倍</option>
+      </select>
+    </div>
 
     <h3>検索の条件</h3>
     <div class="field">
@@ -226,35 +330,77 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 
     <div class="sheet-actions">
       <button type="button" id="closeSettings">閉じる</button>
-      <button type="button" class="primary" id="saveSettings">保存して再検索</button>
+      <button type="button" class="primary" id="saveSettings">保存</button>
     </div>
+  </div>
+</dialog>
+
+<dialog id="menuDialog">
+  <div class="sheet">
+    <h2 id="menuTitle"></h2>
+    <ul class="menu-list" id="menuList"></ul>
+    <p class="hint" id="menuHint" hidden></p>
+    <div class="sheet-actions"><button type="button" id="menuClose">閉じる</button></div>
   </div>
 </dialog>
 
 <div class="player" id="player" hidden>
-  <div class="frame" id="frame"></div>
+  <div class="frame" id="frame">
+    <button class="mini-cover" id="miniCover" type="button" aria-label="大きく表示"></button>
+  </div>
+  <div class="mini-bar">
+    <button class="t" id="miniTitle" type="button"></button>
+    <button class="mb" id="miniPlay" type="button" aria-label="一時停止">❚❚</button>
+    <button class="mb" id="miniClose" type="button" aria-label="閉じる">✕</button>
+  </div>
   <div class="info">
+    <div class="ptools">
+      <button type="button" id="pMin">▾ 小さくする</button>
+      <button type="button" id="pClose">✕ 閉じる</button>
+    </div>
     <h2 id="pTitle"></h2>
-    <div class="sub" id="pSub"></div>
+    <div class="sub" id="pStats"></div>
+    <div class="pchannel">
+      <button class="link" id="pChannel" type="button"></button>
+      <span id="pSubWrap"></span>
+    </div>
     <div class="actions">
       <button type="button" id="pLike" aria-pressed="false">高評価</button>
-      <button type="button" id="pSave">再生リストに保存</button>
+      <button type="button" id="pDislike" aria-pressed="false">低評価</button>
+      <button type="button" id="pSave">保存</button>
+      <button type="button" id="pShare">共有</button>
+      <button type="button" id="pSpeed">速度 1x</button>
+      <button type="button" id="pTimer">タイマー</button>
       <a id="pOpen" href="#" target="_blank" rel="noopener">YouTubeで開く</a>
       <button type="button" id="pBlock">このチャンネルを除外</button>
     </div>
     <p class="pmsg" id="pMsg" aria-live="polite"></p>
+
+    <div class="next-row" id="nextRow" hidden>
+      <span class="t" id="nextTitle"></span>
+      <button class="small" id="nextBtn" type="button">次へ</button>
+    </div>
+
+    <div class="pblock" id="chapterBlock" hidden>
+      <h3>チャプター</h3>
+      <div class="chapters" id="chapters"></div>
+    </div>
+
+    <div class="pblock">
+      <details class="desc" id="descBox">
+        <summary>説明を表示</summary>
+        <div class="prewrap" id="pDesc"></div>
+      </details>
+    </div>
+
+    <div class="pblock">
+      <h3 id="cHead">コメント</h3>
+      <div id="cArea"></div>
+    </div>
   </div>
-  <button class="close" id="pClose" aria-label="閉じる">✕</button>
 </div>
 
-<dialog id="plDialog">
-  <div class="sheet">
-    <h2>再生リストに保存</h2>
-    <ul class="pl-list" id="plList"></ul>
-    <p class="hint" id="plEmpty" hidden>再生リストがありません。YouTubeで作ってから使ってください。</p>
-    <div class="sheet-actions"><button type="button" id="plClose">閉じる</button></div>
-  </div>
-</dialog>
+<div class="toast" id="toast" role="status" hidden></div>
 
 <script src="app.js"></script>
 </body>
