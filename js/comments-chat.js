@@ -94,7 +94,7 @@ function commentNode(c) {
   const s = c.snippet;
   return h('div', { class: 'cmt' },
     h('div', { class: 'who' }, h('b', { text: s.authorDisplayName || '' }), ` ・ ${fmtAgo(s.publishedAt)}`),
-    h('div', { class: 'txt', text: decode(s.textDisplay || s.textOriginal || '') }));
+    h('div', { class: 'txt' }, ...textWithTimes(decode(s.textDisplay || s.textOriginal || '')))); // 時刻はタップでその位置へ
 }
 
 function renderThread(t) {

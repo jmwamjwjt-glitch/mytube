@@ -398,7 +398,7 @@ function renderPlayerInfo(v) {
     $('pStats').textContent = `${fmtCount(st.viewCount)} 回視聴 ${fmtAgo(d.snippet.publishedAt)}`;
     likeCount = st.likeCount != null ? +st.likeCount : null;
     setRating(rating);
-    $('pDesc').textContent = d.snippet.description || '（説明はありません）';
+    $('pDesc').replaceChildren(...(d.snippet.description ? textWithTimes(d.snippet.description) : ['（説明はありません）']));
     $('cCount').textContent = st.commentCount != null ? fmtCount(st.commentCount) : '';
     const chapters = parseChapters(d.snippet.description);
     setChapters(chapters);
@@ -420,6 +420,28 @@ function renderPlayerInfo(v) {
     const t = r.items?.[0]?.snippet?.topLevelComment?.snippet;
     $('cPreview').textContent = t ? `${t.authorDisplayName}：${decode(t.textDisplay)}` : 'まだコメントはありません。最初のコメントを書いてみましょう。';
   }).catch((e) => { if (token === detailToken && /コメントがオフ/.test(e.message)) $('cPreview').textContent = 'この動画はコメントがオフになっています。'; });
+}
+
+// 説明やコメントの中の「3:15」「1:02:30」のような時刻を、タップするとその位置へ飛ぶボタンにする
+const TIME_RE = /(?<![\d:])((?:\d{1,2}:)?\d{1,2}:\d{2})(?![\d:])/g;
+function seekToTime(sec, label) {
+  if (!ytPlayer || playerMode === 'closed') return;
+  try { ytPlayer.seekTo(sec, true); ytPlayer.playVideo(); } catch { /* noop */ }
+  updateTimeUi();
+  toast(`${label} から再生します`);
+}
+function textWithTimes(text) {
+  const out = []; let last = 0;
+  let dur = 0; try { dur = ytPlayer?.getDuration?.() || current?.sec || 0; } catch { /* noop */ }
+  for (const m of text.matchAll(TIME_RE)) {
+    const sec = m[1].split(':').map(Number).reduce((a, b) => a * 60 + b, 0);
+    if (dur && sec > dur) continue; // 動画の長さを超える数字（時刻ではないもの）はそのまま
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(h('button', { type: 'button', class: 'tslink', text: m[1], onclick: () => seekToTime(sec, m[1]) }));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }
 
 function parseChapters(desc) {
