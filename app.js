@@ -361,14 +361,24 @@ function toItem(v, { lang = false, views = false, filter = true, skipBlocked = f
     published: v.snippet.publishedAt, views: v.statistics?.viewCount,
     thumb: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url,
     // 画面に合わせて選べるよう、用意されている大きいサイズも覚えておく（standard=640, maxres=1280 は無い動画もある）
-    thumbs: { h: v.snippet.thumbnails?.high?.url, s: v.snippet.thumbnails?.standard?.url, x: v.snippet.thumbnails?.maxres?.url } };
+    thumbs: { h: v.snippet.thumbnails?.high?.url, s: v.snippet.thumbnails?.standard?.url, x: v.snippet.thumbnails?.maxres?.url },
+    short: detectShort(v, sec) };
 }
+
+// 縦長の動画（ショート）かどうか。API の埋め込みサイズ（縦横比）で判定し、無ければ長さ60秒以下で判定
+function detectShort(v, sec) {
+  const w = +v.player?.embedWidth; const ht = +v.player?.embedHeight;
+  if (w && ht) return ht > w;
+  return sec > 0 && sec <= 60;
+}
+const isShort = (v) => (v.short != null ? !!v.short : (v.sec > 0 && v.sec <= 60));
 
 // サムネイル画像：端末の画面幅と画素密度に合わせて、ブラウザが一番合う解像度を選ぶ
 const THUMB_SIZES = {
   row: '(min-width: 720px) 900px, 100vw',
   compact: '(min-width: 720px) 380px, 42vw',
   card: '(min-width: 720px) 260px, 62vw',
+  short: '(min-width: 720px) 180px, 42vw',
 };
 function thumbImg(v, kind) {
   if (!v.id) return h('img', { src: v.thumb || 'icon.svg', alt: '', loading: 'lazy' });
@@ -385,7 +395,7 @@ function thumbImg(v, kind) {
 async function fetchVideoItems(ids, opts) {
   const out = [];
   for (const part of chunk(ids, 50)) {
-    const det = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails', id: part.join(',') }, 1);
+    const det = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, id: part.join(',') }, 1);
     const byId = new Map((det.items || []).map((v) => [v.id, v]));
     for (const id of part) {
       const v = byId.get(id);
@@ -426,13 +436,42 @@ function durText(v) { return v.live === 'live' ? 'ライブ' : v.live === 'upcom
 
 // ---------- 一覧の表示 ----------
 // menu: (v, row, removeRow) => [{ label, onclick }]  … その一覧だけの「︙」メニュー項目
+// 縦長の動画（ショート）は、普通の一覧から外して「ショート」の棚（縦長カードの横スクロール）にまとめる
 function renderVideos(container, items, { append = false, menu = null, compact = false, extra = null } = {}) {
   if (!append || !container._items) { container.replaceChildren(); container._items = []; }
+  const shorts = [];
+  let anchor = null;
   for (const v of items) {
+    if (!compact && isShort(v)) {
+      if (!anchor) { anchor = h('div'); container.append(anchor); }
+      shorts.push(v);
+      continue;
+    }
     container._items.push(v);
     container.append(renderRow(v, container._items, { menu, compact, extra }));
   }
+  if (shorts.length) anchor.replaceWith(shortsShelf(shorts, menu));
   fillAvatars();
+}
+
+function shortsShelf(items, menu) {
+  const q = items.slice();
+  return h('section', { class: 'shorts-sec' },
+    h('div', { class: 'section-head' }, h('h2', { class: 'shorts-h' }, h('span', { class: 'shorts-mark', text: 'S' }), 'ショート')),
+    h('div', { class: 'carousel' }, q.map((v) => shortCard(v, q, menu))));
+}
+
+function shortCard(v, queue, menu) {
+  const play = () => openPlayer(v, queue);
+  const card = h('article', { class: 'short-card', 'data-vid': v.id, 'data-channel': v.channelId },
+    h('button', { class: 'thumb short-thumb', type: 'button', 'aria-label': '再生', onclick: play }, thumbImg(v, 'short')),
+    h('div', { class: 'card-meta' },
+      h('div', { class: 'mtext' },
+        h('button', { class: 'title', type: 'button', text: decode(v.title), onclick: play }),
+        h('div', { class: 'sub', text: `${fmtCount(v.views)} 回視聴` })),
+      h('button', { class: 'kebab', type: 'button', 'aria-label': 'メニュー', onclick: () => openVideoMenu(v, card, queue, menu) }, icon('vdots'))));
+  decorateRow(card, v);
+  return card;
 }
 
 function renderRow(v, queue, { menu = null, compact = false, extra = null } = {}) {
@@ -487,7 +526,7 @@ function pagedList(box, fetchPage, { menu = null, compact = false, extra = null,
       token = r.next || '';
       renderVideos(list, r.items, { append: started, menu, compact, extra });
       started = true;
-      const n = list.children.length;
+      const n = list.querySelectorAll('[data-vid]').length;
       setMsg(status, n ? (summary ? summary(n) : `${n}件`) : (token ? '条件に合う動画がこのページにありませんでした。' : emptyText));
       more.hidden = !token;
     } catch (e) {
@@ -547,7 +586,7 @@ async function runSearch(reset) {
   try {
     const items = await fetchBatch();
     renderVideos(els.search.list, items, { append: true });
-    const total = els.search.list.children.length;
+    const total = els.search.list.querySelectorAll('[data-vid]').length;
     setMsg(els.search.status, total ? `${total}件表示中（条件に合わない動画は除外済み）` : '条件に合う動画が見つかりませんでした。条件をゆるめてみてください。');
     els.search.more.hidden = !state.pageToken;
   } catch (e) {
@@ -603,7 +642,7 @@ function renderFeed(cache) {
   renderVideos(els.feed.list, cache.items.filter((v) => !isBlocked(v.channelId)));
   const t = new Date(cache.at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
   setMsg(els.feed.status, cache.items.length
-    ? `${cache.channels}チャンネルの新着 ${els.feed.list.children.length}件（${t} 更新・長さなどの条件を適用済み）`
+    ? `${cache.channels}チャンネルの新着 ${els.feed.list.querySelectorAll('[data-vid]').length}件（${t} 更新・長さなどの条件を適用済み）`
     : '新着が見つかりませんでした。');
   $('feedRefresh').hidden = false;
 }
@@ -804,7 +843,7 @@ function openLiked() {
   openDetail('高評価した動画', (box) => {
     pagedList(box, async (token) => {
       await ensureToken();
-      const r = await apiAuth('GET', 'videos', { part: 'snippet,contentDetails,statistics', myRating: 'like', maxResults: 50, pageToken: token }, null, 1);
+      const r = await apiAuth('GET', 'videos', { part: 'snippet,contentDetails,statistics,player', maxWidth: 240, myRating: 'like', maxResults: 50, pageToken: token }, null, 1);
       return { items: (r.items || []).map((v) => toItem(v, { filter: false })), next: r.nextPageToken };
     }, { compact: true, summary: (n) => `${n}件`, emptyText: '高評価した動画はまだありません。' });
   });
@@ -1236,6 +1275,7 @@ function openPlayer(v, list, { keepMode = false } = {}) {
   queue = Array.isArray(list) && list.includes(v) ? list : [v];
   if (!keepMode || playerMode === 'closed') showFullPlayer();
   $('player').hidden = false;
+  $('player').dataset.short = isShort(v) ? '1' : ''; // ショートは縦長に表示
   renderPlayerInfo(v);
   const e = histGet(v.id);
   const start = settings.historyOn && e && !e.done && e.pos >= RESUME_MIN ? e.pos : 0;
@@ -1291,7 +1331,8 @@ function renderUpNext() {
   box.replaceChildren();
   const i = queue.indexOf(current);
   const rest = queue.slice(i + 1).filter((v) => !isBlocked(v.channelId)).slice(0, 20);
-  for (const v of rest) box.append(renderRow(v, queue));
+  if (rest.length && isShort(current)) box.append(shortsShelf(rest)); // ショートの続きは縦長の棚で
+  else for (const v of rest) box.append(renderRow(v, queue));
   $('upNextEmpty').hidden = rest.length > 0;
   fillAvatars();
 }
@@ -1755,7 +1796,7 @@ async function buildRecommendations(progress) {
   for (const [c] of cats) {
     try {
       progress(`${CATEGORY_NAMES[c] || 'ジャンル'}の人気動画を集めています…`);
-      const r = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails', chart: 'mostPopular', regionCode: 'JP', videoCategoryId: c, maxResults: 25 }, 1);
+      const r = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, chart: 'mostPopular', regionCode: 'JP', videoCategoryId: c, maxResults: 25 }, 1);
       const k = keep((r.items || []).map((v) => toItem(v, {})).filter(Boolean));
       if (k.length) sections.push({ title: `${CATEGORY_NAMES[c] || '好きなジャンル'}の人気動画`, items: k, reason: `${CATEGORY_NAMES[c] || 'このジャンル'}の動画をよく見ているため` });
     } catch { /* このジャンルは人気一覧がない */ }
@@ -1764,7 +1805,7 @@ async function buildRecommendations(progress) {
   // 材料が足りないときは日本の人気動画
   if (!sections.length) {
     progress('人気の動画を集めています…');
-    const r = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails', chart: 'mostPopular', regionCode: 'JP', maxResults: 30 }, 1);
+    const r = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, chart: 'mostPopular', regionCode: 'JP', maxResults: 30 }, 1);
     const k = keep((r.items || []).map((v) => toItem(v, {})).filter(Boolean));
     if (k.length) sections.push({ title: '日本の人気動画', items: k, reason: '視聴データがまだ少ないため、人気の動画を表示しています。見るほど、あなた向けに変わっていきます。' });
   }
