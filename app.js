@@ -1823,8 +1823,9 @@ function setupChat(v, d) {
   if (!ls) return; // 生放送ではない普通の動画
   const live = d.snippet.liveBroadcastContent === 'live';
   const upcoming = d.snippet.liveBroadcastContent === 'upcoming';
-  const archive = !live && !upcoming && !!ls.actualEndTime;
-  if (!live && !upcoming && !archive) return;
+  // アーカイブの「チャットのリプレイ」は、YouTube の視聴ページだけが持つ鍵が必要で、外部のページからは表示できないため出さない
+  const archive = false;
+  if (!live && !upcoming) return;
   chatInfo = { id: v.id, replay: archive };
   $('chatTeaser').hidden = false;
   $('chatTeaser').dataset.replay = archive ? '1' : '';
