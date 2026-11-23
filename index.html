@@ -165,6 +165,11 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .account-actions button { height: 36px; padding: 0 16px; border-radius: 18px; border: 0; background: var(--chip); }
 #loginBtn { background: var(--inv-bg); color: var(--inv-fg); font-weight: 600; }
+.kw-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.kw-list li { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 12px; border-radius: 17px; background: var(--chip); font-size: 14px; }
+.kw-list button { height: 26px; padding: 0 10px; border: 0; border-radius: 13px; background: var(--bg); font-size: 12px; }
+.chips.wrap { flex-wrap: wrap; overflow: visible; padding: 0; }
+.chip-edit { background: transparent; border: 1px solid var(--line); }
 .menu-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .menu-list button { width: 100%; text-align: left; padding: 14px 4px; border: 0; background: none; font-size: 15px; }
 .menu-list button[aria-current="true"] { font-weight: 700; }
@@ -459,6 +464,46 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   </div>
 </dialog>
 
+<dialog id="kwDialog">
+  <div class="sheet">
+    <h2>おすすめのワード</h2>
+    <p class="hint">ホームには、ワードごとに検索した動画も並びます。ワード1つにつき、おすすめを作り直すたびに100ユニット使います。</p>
+
+    <h3>自分で追加したワード（必ず表示）</h3>
+    <ul class="kw-list" id="kwCustom"></ul>
+    <p class="hint" id="kwCustomEmpty">まだありません。下の入力欄か、候補から追加できます。</p>
+    <form class="form-row" id="kwForm">
+      <input id="kwInput" type="text" placeholder="例：キャンプ飯、ソロキャンプ" maxlength="40" enterkeyhint="done" aria-label="追加するワード">
+      <button class="primary-btn" type="submit">追加</button>
+    </form>
+    <p class="hint" id="kwMsg" aria-live="polite"></p>
+
+    <h3>履歴から自動で選ぶワード</h3>
+    <div class="field">
+      <label for="kwAutoCount">自動で選ぶ数</label>
+      <select id="kwAutoCount">
+        <option value="0">使わない（自分のワードだけ）</option>
+        <option value="1">1つ</option>
+        <option value="2">2つ（標準）</option>
+        <option value="3">3つ</option>
+      </select>
+    </div>
+    <p class="hint">候補（● は今ホームに出ているワード）。タップすると、追加するか表示しないかを選べます。</p>
+    <div class="chips wrap" id="kwCands"></div>
+    <p class="hint" id="kwCandsEmpty">候補はまだありません。動画を見ると増えていきます。</p>
+
+    <h3>表示しないワード</h3>
+    <ul class="kw-list" id="kwHidden"></ul>
+    <p class="hint" id="kwHiddenEmpty">ありません。</p>
+
+    <p class="hint" id="kwCost"></p>
+    <div class="sheet-actions">
+      <button type="button" id="kwClose">閉じる</button>
+      <button type="button" class="primary" id="kwApply">保存して今すぐ更新</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="menuDialog">
   <div class="sheet">
     <h2 id="menuTitle"></h2>
@@ -584,6 +629,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112309" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112310" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>

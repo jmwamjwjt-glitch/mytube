@@ -1669,6 +1669,7 @@ function tokenize(text) {
     if (w.length < 2) continue;
     if (/^[\d０-９.,:年月日時分秒回話本]+$/.test(w)) continue;
     if (/^[぀-ゟ]+$/.test(w) && w.length < 4) continue; // 助詞などの短いひらがな
+    if (/^[一-鿿][぀-ゟ]{1,2}$/.test(w)) continue; // 「張り」「選び」など動詞の切れ端
     if (/^[a-z]{1,2}$/.test(w) || STOPWORDS.has(w)) continue;
     out.add(w);
   }
@@ -1728,19 +1729,26 @@ async function buildRecommendations(progress) {
       reason: chans.slice(0, 3).map(([id]) => sig.chNames.get(id)).filter(Boolean).join('、') + ' など、よく見ているチャンネル' });
   }
 
-  // 2. よく出てくる言葉で検索（1語100ユニットなので2語まで）
+  // 2. ワードで検索（1語100ユニット）。自分で追加したワード＋履歴から自動で選んだワード
   const hiddenKw = new Set(settings.hiddenKeywords || []);
-  const kws = topOf(sig.kw).filter(([w, s]) => s >= 1.5 && !hiddenKw.has(w) && !sig.nameWords.has(w)).slice(0, 2);
-  for (const [w] of kws) {
-    progress(`「${w}」の動画を探しています…`);
-    const params = { part: 'snippet', type: 'video', maxResults: 25, q: w };
-    if (settings.jaOnly) { params.relevanceLanguage = 'ja'; params.regionCode = 'JP'; }
-    if (settings.minMin >= 20) params.videoDuration = 'long';
-    const r = await api('search', params, 100);
-    const ids = (r.items || []).map((it) => it.id?.videoId).filter((id) => id && !isBlocked(r.items.find((x) => x.id.videoId === id).snippet.channelId));
-    const k = keep(await fetchVideoItems(ids, { lang: true }));
-    if (k.length) sections.push({ title: `「${w}」のおすすめ`, keyword: w, items: k, reason: `「${w}」が入った動画をよく見ているため` });
+  const custom = (settings.customKeywords || []).filter((w) => !hiddenKw.has(w));
+  const autoCands = topOf(sig.kw).filter(([w, s]) => s >= 1 && !hiddenKw.has(w) && !sig.nameWords.has(w) && !custom.includes(w));
+  const autoKws = autoCands.filter(([, s]) => s >= 1.5).slice(0, settings.autoKwCount ?? 2).map(([w]) => w);
+  const kwList = [...custom.map((w) => ({ w, mine: true })), ...autoKws.map((w) => ({ w, mine: false }))];
+  for (const { w, mine } of kwList) {
+    try {
+      progress(`「${w}」の動画を探しています…`);
+      const params = { part: 'snippet', type: 'video', maxResults: 25, q: w };
+      if (settings.jaOnly) { params.relevanceLanguage = 'ja'; params.regionCode = 'JP'; }
+      if (settings.minMin >= 20) params.videoDuration = 'long';
+      const r = await api('search', params, 100);
+      const ids = (r.items || []).filter((it) => it.id?.videoId && !isBlocked(it.snippet?.channelId)).map((it) => it.id.videoId);
+      const k = keep(await fetchVideoItems(ids, { lang: true }));
+      if (k.length) sections.push({ title: `「${w}」のおすすめ`, keyword: w, custom: mine, items: k,
+        reason: mine ? `あなたが追加したワード「${w}」` : `「${w}」が入った動画をよく見ているため` });
+    } catch (e) { if (/上限/.test(e.message)) throw e; /* そのワードだけ飛ばす */ }
   }
+  const kwCandidates = autoCands.map(([w]) => w).filter((w) => !autoKws.includes(w)).slice(0, 12);
 
   // 3. よく見るジャンルの人気動画
   const cats = topOf(sig.cat).filter(([, s]) => s >= 1).slice(0, 3);
@@ -1760,7 +1768,7 @@ async function buildRecommendations(progress) {
     const k = keep((r.items || []).map((v) => toItem(v, {})).filter(Boolean));
     if (k.length) sections.push({ title: '日本の人気動画', items: k, reason: '視聴データがまだ少ないため、人気の動画を表示しています。見るほど、あなた向けに変わっていきます。' });
   }
-  return { at: Date.now(), basis: watchHistory.length + liked.length, sections };
+  return { at: Date.now(), basis: watchHistory.length + liked.length, sections, kwCandidates };
 }
 
 // 横スクロールの棚（続きから見る・履歴）用の小さいカード
@@ -1797,13 +1805,75 @@ function interleave(lists) {
   return out;
 }
 function hideKeyword(keyword) {
-  settings.hiddenKeywords = [...new Set([...(settings.hiddenKeywords || []), keyword])]; persist();
+  const mine = (settings.customKeywords || []).includes(keyword);
+  if (mine) settings.customKeywords = settings.customKeywords.filter((w) => w !== keyword);
+  else settings.hiddenKeywords = [...new Set([...(settings.hiddenKeywords || []), keyword])];
+  persist();
   const c = load('mytube.rec', null);
   if (c) { c.sections = c.sections.filter((s) => s.keyword !== keyword); save('mytube.rec', c); }
   if (homeFilter === keyword) homeFilter = 'all';
   renderHome(c);
-  toast(`「${keyword}」の動画はおすすめに出さないようにしました。`);
+  toast(mine ? `「${keyword}」をおすすめのワードから外しました。` : `「${keyword}」の動画はおすすめに出さないようにしました。`);
 }
+
+// ---------- おすすめのワードの編集 ----------
+const KW_MAX = 8;
+let kwDirty = false;
+function kwCostText() {
+  const n = (settings.customKeywords || []).length + (settings.autoKwCount ?? 2);
+  const per = n * 100 + 20;
+  return `いまの設定：ワード${n}個 → おすすめを1回作るごとに約${per}ユニット（6時間ごとに作り直すので、1日最大 約${per * 4}／10,000）`;
+}
+function renderKwEditor() {
+  const custom = settings.customKeywords || [];
+  const hidden = settings.hiddenKeywords || [];
+  const rec = load('mytube.rec', null);
+  const used = new Set([...custom, ...hidden]);
+  const autoNow = (rec?.sections || []).filter((s) => s.keyword && !s.custom).map((s) => s.keyword);
+  const cands = [...new Set([...autoNow, ...(rec?.kwCandidates || [])])].filter((w) => !used.has(w));
+  const row = (w, label, fn) => h('li', {}, h('span', { text: w }), h('button', { type: 'button', text: label, onclick: fn }));
+  $('kwCustom').replaceChildren(...custom.map((w) => row(w, '外す', () => {
+    settings.customKeywords = custom.filter((x) => x !== w); persist(); kwDirty = true; renderKwEditor();
+  })));
+  $('kwCustomEmpty').hidden = custom.length > 0;
+  $('kwAutoCount').value = String(settings.autoKwCount ?? 2);
+  $('kwCands').replaceChildren(...cands.map((w) => h('button', { class: 'chip', type: 'button', text: (autoNow.includes(w) ? '● ' : '') + w, onclick: () => {
+    openMenu(`「${w}」`, [
+      { label: '自分のワードに追加（必ず表示する）', onclick: () => addKeyword(w) },
+      { label: 'このワードを表示しない', onclick: () => { settings.hiddenKeywords = [...new Set([...hidden, w])]; persist(); kwDirty = true; renderKwEditor(); } },
+    ]);
+  } })));
+  $('kwCandsEmpty').hidden = cands.length > 0;
+  $('kwHidden').replaceChildren(...hidden.map((w) => row(w, '戻す', () => {
+    settings.hiddenKeywords = hidden.filter((x) => x !== w); persist(); kwDirty = true; renderKwEditor();
+  })));
+  $('kwHiddenEmpty').hidden = hidden.length > 0;
+  $('kwCost').textContent = kwCostText();
+}
+function addKeyword(raw) {
+  const w = raw.trim().replace(/\s+/g, ' ');
+  if (!w) return;
+  const custom = settings.customKeywords || [];
+  if (custom.includes(w)) { setMsg($('kwMsg'), `「${w}」はもう追加されています。`, true); return; }
+  if (custom.length >= KW_MAX) { setMsg($('kwMsg'), `自分のワードは${KW_MAX}個までです（使用量が増えすぎないように）。`, true); return; }
+  settings.customKeywords = [...custom, w];
+  settings.hiddenKeywords = (settings.hiddenKeywords || []).filter((x) => x !== w);
+  persist(); kwDirty = true;
+  setMsg($('kwMsg'), `「${w}」を追加しました。`);
+  renderKwEditor();
+}
+function openKwEditor() {
+  kwDirty = false;
+  setMsg($('kwMsg'), '');
+  $('kwInput').value = '';
+  renderKwEditor();
+  $('kwDialog').showModal();
+}
+$('kwForm').addEventListener('submit', (e) => { e.preventDefault(); addKeyword($('kwInput').value); $('kwInput').value = ''; });
+$('kwAutoCount').addEventListener('change', () => { settings.autoKwCount = +$('kwAutoCount').value; persist(); kwDirty = true; $('kwCost').textContent = kwCostText(); });
+$('kwClose').addEventListener('click', () => { $('kwDialog').close(); if (kwDirty) toast('変更は次におすすめを作り直したときに反映されます（「更新」ですぐ反映）。'); });
+$('kwApply').addEventListener('click', () => { $('kwDialog').close(); setTab('home'); loadHome(true); });
+$('kwDialog').addEventListener('click', (e) => { if (e.target === $('kwDialog')) $('kwDialog').close(); });
 
 function renderHome(rec) {
   const box = $('homeContent');
@@ -1815,8 +1885,9 @@ function renderHome(rec) {
   // 上のチップ（すべて / 話題 / ジャンル…）
   $('homeChips').replaceChildren(...[['all', 'すべて'], ...secs.map((s) => [s.label, s.label])].map(([key, label]) =>
     h('button', { class: 'chip', type: 'button', text: label, 'aria-pressed': String(homeFilter === key),
-      onclick: () => { homeFilter = key; renderHome(load('mytube.rec', null)); window.scrollTo({ top: 0 }); } })));
-  $('homeChips').hidden = !secs.length;
+      onclick: () => { homeFilter = key; renderHome(load('mytube.rec', null)); window.scrollTo({ top: 0 }); } })),
+    h('button', { class: 'chip chip-edit', type: 'button', text: '✎ ワードを編集', onclick: openKwEditor }));
+  $('homeChips').hidden = false;
 
   if (homeFilter === 'all') {
     const cont = watchHistory.filter((e) => !e.done && !e.dismissed && e.pos >= RESUME_MIN && !isBlocked(e.channelId)).slice(0, 15);
@@ -1836,7 +1907,7 @@ function renderHome(rec) {
     renderVideos(feed, list, { menu: (v, row, removeRow) => {
       const s = secOf.get(v.id);
       const o = [{ label: '興味なし', onclick: () => { hideVideo(v.id); removeRow(); toast('この動画はおすすめに表示しません。'); } }];
-      if (s?.keyword) o.push({ label: `「${s.keyword}」の動画を表示しない`, onclick: () => hideKeyword(s.keyword) });
+      if (s?.keyword) o.push({ label: s.custom ? `「${s.keyword}」をおすすめのワードから外す` : `「${s.keyword}」の動画を表示しない`, onclick: () => hideKeyword(s.keyword) });
       return o;
     } });
   }
