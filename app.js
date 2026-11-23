@@ -1,7 +1,8 @@
 'use strict';
 
 const API = 'https://www.googleapis.com/youtube/v3/';
-const SCOPE = 'https://www.googleapis.com/auth/youtube';
+const YT_SCOPE = 'https://www.googleapis.com/auth/youtube';
+const SCOPE = YT_SCOPE + ' email'; // email はアカウント選択を省くためだけに使う
 const PAGE_TARGET = 15;   // 1回の読み込みで表示したい件数
 const MAX_PAGES = 3;      // 1回の読み込みで叩く検索ページ数の上限（1ページ = 100ユニット）
 const FEED_PER_CHANNEL = 5;
@@ -144,9 +145,15 @@ function decorateRow(row, v) {
 }
 
 // ---------- ログイン（Google Identity Services） ----------
-let auth = load('mytube.auth', null); // { token, exp, name, avatar }
+// ページだけのアプリには1時間で切れる通行証（アクセストークン）しか出ないため、
+// ・前回のアカウントを覚えて選択画面を省く
+// ・切れたあと最初にタップしたときに先回りで取り直す
+// ことで、ログインし直しを意識しなくて済むようにしている
+let auth = load('mytube.auth', null); // { token, exp, name, avatar, email }
 let tokenClient = null;
+let tokenClientHint = null;
 let pendingLogin = null;
+let tokenPromise = null;
 let gisPromise = null;
 
 const isLoggedIn = () => !!auth?.name;
@@ -168,15 +175,25 @@ function loadGis() {
 }
 
 function initTokenClient() {
-  if (tokenClient || !settings.clientId || !window.google?.accounts?.oauth2) return;
+  const hint = auth?.email || '';
+  if (tokenClient && tokenClientHint === hint) return;
+  if (!settings.clientId || !window.google?.accounts?.oauth2) return;
+  tokenClientHint = hint;
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: settings.clientId,
     scope: SCOPE,
+    include_granted_scopes: true,
+    login_hint: hint || undefined, // 前回のアカウントを指定して、アカウント選択を省く
     callback: (resp) => {
       const p = pendingLogin; pendingLogin = null;
       if (resp.error) { p?.reject(new Error('ログインできませんでした（' + resp.error + '）')); return; }
+      if (google.accounts.oauth2.hasGrantedAllScopes && !google.accounts.oauth2.hasGrantedAllScopes(resp, YT_SCOPE)) {
+        p?.reject(new Error('YouTubeへのアクセスが許可されませんでした。もう一度ログインして、すべての項目を許可してください。'));
+        return;
+      }
       auth = Object.assign({}, auth, { token: resp.access_token, exp: Date.now() + (+resp.expires_in || 3600) * 1000 });
       save('mytube.auth', auth);
+      if (!auth.email) fetchEmail();
       p?.resolve();
     },
     error_callback: (err) => {
@@ -186,21 +203,42 @@ function initTokenClient() {
   });
 }
 
-// 必ずボタンを押した直後に呼ぶ（ポップアップがブロックされないように）
+// アカウント選択を省くために、ログインしたメールアドレスを覚える（このスマホの中だけ）
+async function fetchEmail() {
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + auth.token } });
+    const d = await r.json();
+    if (d.email && auth) { auth.email = d.email; save('mytube.auth', auth); }
+  } catch { /* 取れなくても動作に影響なし */ }
+}
+
+// 必ずボタンを押した直後に呼ぶ（ポップアップがブロックされないように）。同時に呼ばれても1回にまとめる
 function requestToken() {
+  if (tokenPromise) return tokenPromise;
   if (!settings.clientId) return Promise.reject(new Error('先に設定で「OAuth クライアントID」を入れてください。'));
   initTokenClient();
   if (!tokenClient) return loadGis().then(() => { initTokenClient(); return requestToken(); });
-  return new Promise((resolve, reject) => {
+  tokenPromise = new Promise((resolve, reject) => {
     pendingLogin = { resolve, reject };
     tokenClient.requestAccessToken({ prompt: isLoggedIn() ? '' : 'consent' });
-  });
+  }).finally(() => { tokenPromise = null; });
+  return tokenPromise;
 }
 
 async function ensureToken() {
   if (tokenValid()) return;
   await requestToken();
 }
+
+// 切れている（もうすぐ切れる）ときは、画面のどこかを最初にタップした瞬間に取り直しておく
+let lastAutoRefresh = 0;
+document.addEventListener('click', () => {
+  if (!isLoggedIn() || !settings.clientId || tokenPromise) return;
+  if (auth.token && auth.exp - Date.now() > 5 * 60 * 1000) return;
+  if (Date.now() - lastAutoRefresh < 10 * 60 * 1000) return; // キャンセルされたら10分は再挑戦しない
+  lastAutoRefresh = Date.now();
+  requestToken().catch(() => {});
+}, true);
 
 async function login() {
   await requestToken();
@@ -221,6 +259,7 @@ async function withLogin(fn) {
 function logout() {
   if (auth?.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(auth.token, () => {});
   auth = null; remove('mytube.auth'); remove('mytube.feed');
+  tokenClient = null;
   els.feed.list.replaceChildren();
   renderAccount();
   if (state.tab === 'feed') showFeedEmpty();
