@@ -29,7 +29,7 @@ a { color: inherit; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); -webkit-tap-highlight-color: transparent;
   padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)); }
-body.has-mini { padding-bottom: calc(var(--nav-h) + 64px + env(safe-area-inset-bottom, 0px)); }
+body.has-mini { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)); }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -249,15 +249,23 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .replies { margin: 10px 0 0 14px; display: flex; flex-direction: column; gap: 12px; }
 
 /* ---------- Mini player ---------- */
-.player.mini { left: 0; right: 0; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)); height: 64px; display: flex; align-items: center; gap: 10px;
-  background: var(--surface); border-top: 1px solid var(--line); padding: 0 calc(var(--gut) - 4px) 0 0; }
-.player.mini .frame { width: 114px; height: 64px; aspect-ratio: auto; }
+/* Floating window in a corner (drag the bar to move it). Buttons sit in the bar under the video, never on top of it. */
+.player.mini { width: min(58vw, 300px); display: flex; flex-direction: column; border-radius: 12px; overflow: hidden;
+  background: var(--surface); box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  right: max(8px, env(safe-area-inset-right, 0px)); left: auto;
+  bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom, 0px)); top: auto; }
+.player.mini.at-left { left: max(8px, env(safe-area-inset-left, 0px)); right: auto; }
+.player.mini.at-top { top: calc(var(--top-h) + 8px + env(safe-area-inset-top, 0px)); bottom: auto; }
+.player.mini.dragging { transition: none; box-shadow: 0 10px 32px rgba(0,0,0,.45); }
+.player.mini .frame { width: 100%; height: auto; aspect-ratio: 16/9; }
 .player.mini .info, .player.mini .pctrl { display: none; }
 .mini-bar { display: none; }
-.player.mini .mini-bar { display: flex; flex: 1; min-width: 0; align-items: center; gap: 2px; }
-.mini-text { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; }
-.mini-text .t { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mini-text .sub { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player.mini .mini-bar { display: flex; align-items: center; height: 38px; padding: 0 2px 0 0; touch-action: none; }
+.mini-bar .tbtn { width: 34px; height: 34px; }
+.mini-bar .tbtn .ic { width: 20px; height: 20px; }
+.mini-text { flex: 1; min-width: 0; height: 38px; text-align: left; background: none; border: 0; padding: 0 4px 0 10px; cursor: grab; touch-action: none; }
+.mini-text .t { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-text .sub { display: none; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom, 0px)); z-index: 80;
   background: var(--inv-bg); color: var(--inv-fg); padding: 10px 16px; border-radius: 8px; font-size: 13px; max-width: calc(100% - 32px); box-shadow: 0 4px 16px rgba(0,0,0,.25); }
@@ -499,6 +507,9 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   <div class="mini-bar">
     <button class="mini-text" id="miniTitle" type="button"><div class="t" id="miniT"></div><div class="sub" id="miniSub"></div></button>
     <button class="tbtn" id="miniPlay" type="button" aria-label="一時停止"></button>
+    <button class="tbtn" id="miniExpand" type="button" aria-label="大きく表示">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></span>
+    </button>
     <button class="tbtn" id="miniClose" type="button" aria-label="閉じる">
       <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
     </button>
@@ -573,6 +584,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112308" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112309" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>

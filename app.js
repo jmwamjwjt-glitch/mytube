@@ -1263,7 +1263,7 @@ function showFullPlayer() {
 function minimizePlayer() {
   if (playerMode !== 'full') return;
   playerMode = 'mini';
-  $('player').className = 'player mini';
+  $('player').className = 'player mini' + miniCornerClass();
   document.body.classList.add('has-mini');
 }
 function closePlayer() {
@@ -1478,7 +1478,44 @@ $('pChannel').addEventListener('click', goCurrentChannel);
 $('pChAvBtn').addEventListener('click', goCurrentChannel);
 $('autoNextToggle').addEventListener('change', (e) => { settings.autoNext = e.target.checked; persist(); });
 $('pMin').addEventListener('click', () => minimizePlayer());
-$('miniTitle').addEventListener('click', showFullPlayer);
+// ---------- 小窓（ミニプレーヤー）：下のバーをドラッグして四隅に移動 ----------
+function miniCornerClass() {
+  const c = settings.miniCorner || 'bottom-right';
+  return (c.startsWith('top') ? ' at-top' : '') + (c.endsWith('left') ? ' at-left' : '');
+}
+let miniDrag = null;
+let miniJustDragged = false;
+$('miniTitle').addEventListener('pointerdown', (e) => {
+  if (playerMode !== 'mini') return;
+  const r = $('player').getBoundingClientRect();
+  miniDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, cx: r.left + r.width / 2, cy: r.top + r.height / 2, moved: false };
+  $('miniTitle').setPointerCapture(e.pointerId);
+});
+$('miniTitle').addEventListener('pointermove', (e) => {
+  if (!miniDrag || e.pointerId !== miniDrag.id) return;
+  const dx = e.clientX - miniDrag.x; const dy = e.clientY - miniDrag.y;
+  if (!miniDrag.moved && Math.hypot(dx, dy) < 8) return;
+  miniDrag.moved = true;
+  $('player').classList.add('dragging');
+  $('player').style.transform = `translate(${dx}px, ${dy}px)`;
+});
+const endMiniDrag = (e) => {
+  if (!miniDrag || e.pointerId !== miniDrag.id) return;
+  const d = miniDrag; miniDrag = null;
+  $('player').style.transform = '';
+  $('player').classList.remove('dragging');
+  miniJustDragged = d.moved;
+  if (!d.moved) return;
+  // 指を離した位置に一番近い角へ吸い付ける
+  const cx = d.cx + (e.clientX - d.x); const cy = d.cy + (e.clientY - d.y);
+  settings.miniCorner = `${cy < innerHeight / 2 ? 'top' : 'bottom'}-${cx < innerWidth / 2 ? 'left' : 'right'}`;
+  persist();
+  $('player').className = 'player mini' + miniCornerClass();
+};
+$('miniTitle').addEventListener('pointerup', endMiniDrag);
+$('miniTitle').addEventListener('pointercancel', endMiniDrag);
+$('miniTitle').addEventListener('click', () => { if (miniJustDragged) { miniJustDragged = false; return; } showFullPlayer(); });
+$('miniExpand').addEventListener('click', showFullPlayer);
 $('miniClose').addEventListener('click', closePlayer);
 $('miniPlay').addEventListener('click', togglePlay);
 setMiniPlaying(true);
