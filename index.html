@@ -187,6 +187,9 @@ details.desc .prewrap { margin-top: 8px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 80;
   background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 13px; max-width: calc(100% - 32px); box-shadow: 0 4px 16px rgba(0,0,0,.2); }
 body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
+.boot-err { position: fixed; left: 12px; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 90; padding: 12px 14px;
+  border-radius: 10px; background: var(--accent); color: var(--accent-fg); font-size: 14px; }
+.boot-err button { margin-left: 8px; padding: 4px 12px; border-radius: 14px; border: 0; background: var(--accent-fg); color: var(--accent); font-weight: 700; }
 @media (min-width: 720px) { main, header .inner { max-width: 820px; margin: 0 auto; } .item { grid-template-columns: 240px 1fr; }
   .player.full .frame { max-width: 960px; margin: 0 auto; } }
 @media (prefers-reduced-motion: no-preference) { .toast { transition: opacity .2s; } }
@@ -402,6 +405,17 @@ body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
 
 <div class="toast" id="toast" role="status" hidden></div>
 
-<script src="app.js"></script>
+<div class="boot-err" id="bootErr" hidden>
+  アプリの読み込みに失敗しました。古いファイルが残っている可能性があります。
+  <button type="button" onclick="location.reload()">再読み込み</button>
+</div>
+<script>
+  // app.js の読み込み・実行に失敗したときだけ案内を出す
+  window.addEventListener('error', function (e) {
+    if (e.filename && e.filename.indexOf('/app.js') !== -1) document.getElementById('bootErr').hidden = false;
+  });
+</script>
+<!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
+<script src="app.js?v=2026112302" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
