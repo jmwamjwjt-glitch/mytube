@@ -36,6 +36,8 @@ async function runSearch(reset) {
   if (reset) {
     state.query = els.q.value.trim();
     if (!state.query) return;
+    addSearchHistory(state.query);
+    $('searchHistory').hidden = true;
     state.pageToken = null; state.shown = new Set();
     els.search.list.replaceChildren(); els.search.list._items = [];
     window.scrollTo({ top: 0 });

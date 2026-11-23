@@ -172,14 +172,33 @@ function buildUrl(path, params) {
   return url;
 }
 
+// 検索（1回100ユニット）の結果は1時間とっておき、同じ条件の検索ではそれを使う（使用量の節約）
+const SEARCH_CACHE_TTL = 60 * 60 * 1000;
+const SEARCH_CACHE_MAX = 40;
+function searchCacheGet(key) {
+  const c = load('mytube.searchCache', {});
+  const e = c[key];
+  return e && Date.now() - e.at < SEARCH_CACHE_TTL ? e.data : null;
+}
+function searchCachePut(key, data) {
+  const c = load('mytube.searchCache', {});
+  c[key] = { at: Date.now(), data };
+  const keys = Object.keys(c).filter((k) => Date.now() - c[k].at < SEARCH_CACHE_TTL).sort((a, b) => c[b].at - c[a].at);
+  const out = {}; for (const k of keys.slice(0, SEARCH_CACHE_MAX)) out[k] = c[k];
+  save('mytube.searchCache', out);
+}
+
 async function api(path, params, cost) {
   if (!settings.apiKey) throw new Error('先に設定からAPIキーを入れてください。');
   const url = buildUrl(path, params);
+  const cacheKey = path === 'search' ? url.search : null; // キーを入れる前の条件で覚える
+  if (cacheKey) { const hit = searchCacheGet(cacheKey); if (hit) return hit; }
   url.searchParams.set('key', settings.apiKey);
   const res = await fetch(url);
   addQuota(cost);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw apiError(res, data, false);
+  if (cacheKey) searchCachePut(cacheKey, data);
   return data;
 }
 

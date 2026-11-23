@@ -573,7 +573,7 @@ const offRatio = (left, w) => 1 - Math.max(0, Math.min(left + w, innerWidth) - M
 function miniPointerDown(e, mode) {
   if (playerMode !== 'mini') return;
   const r = $('player').getBoundingClientRect();
-  miniDrag = { mode, id: e.pointerId, x: e.clientX, y: e.clientY, l: r.left, t: r.top, w: r.width, b: r.bottom, moved: false };
+  miniDrag = { mode, id: e.pointerId, x: e.clientX, y: e.clientY, l: r.left, t: r.top, w: r.width, b: r.bottom, moved: false, at: Date.now() };
   try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 指を追えない環境でも動かせるように */ }
 }
 function miniPointerMove(e) {
@@ -605,6 +605,9 @@ function miniPointerUp(e) {
   if (!d.moved) return;
   const r = p.getBoundingClientRect();
   if (d.mode === 'move') {
+    // 上へ素早くはじいたら大きく表示（ゆっくり動かしたときは位置の移動）
+    const fdx = e.clientX - d.x; const fdy = e.clientY - d.y;
+    if (fdy < -50 && Math.abs(fdx) < 50 && Date.now() - d.at < 280) { placeMini(); showFullPlayer(); return; }
     if (offRatio(r.left, r.width) > 0.3) { closePlayer(); toast('プレーヤーを閉じました。'); return; }
     settings.miniPos = { side: r.left + r.width / 2 < innerWidth / 2 ? 'left' : 'right', y: miniSaveY(r.top, r.height) };
   } else {
