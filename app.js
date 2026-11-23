@@ -113,7 +113,8 @@ function recordProgress(v, pos, ended, duration) {
   let e = histGet(v.id);
   if (e) watchHistory.splice(watchHistory.indexOf(e), 1);
   else e = { id: v.id, title: v.title, channel: v.channel, channelId: v.channelId, thumb: v.thumb,
-    sec: v.sec, live: v.live, views: v.views, published: v.published };
+    sec: v.sec, live: v.live, views: v.views, published: v.published, cat: v.cat };
+  e.dismissed = false;
   const dur = v.sec || duration || 0;
   if (!e.sec && dur) e.sec = Math.round(dur);
   const tail = Math.min(30, dur * 0.1);
@@ -123,7 +124,7 @@ function recordProgress(v, pos, ended, duration) {
   watchHistory.unshift(e);
   if (watchHistory.length > HISTORY_MAX) watchHistory.length = HISTORY_MAX;
   saveHistory();
-  document.querySelectorAll(`main .item[data-vid="${CSS.escape(v.id)}"]`).forEach((row) => decorateRow(row, v));
+  document.querySelectorAll(`main [data-vid="${CSS.escape(v.id)}"]`).forEach((row) => decorateRow(row, v));
 }
 
 // 一覧のサムネに「視聴済み」や進み具合のバーを付ける
@@ -306,7 +307,7 @@ function toItem(v, { lang = false, views = false, filter = true, skipBlocked = f
     if (lang && settings.jaOnly && !hasKana(v.snippet.title) && !hasKana(v.snippet.description) &&
         !(v.snippet.defaultAudioLanguage || v.snippet.defaultLanguage || '').startsWith('ja')) return null;
   }
-  return { id: v.id, sec, live, title: v.snippet.title,
+  return { id: v.id, sec, live, title: v.snippet.title, cat: v.snippet.categoryId,
     channel: v.snippet.channelTitle, channelId: v.snippet.channelId,
     published: v.snippet.publishedAt, views: v.statistics?.viewCount,
     thumb: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url };
@@ -356,7 +357,7 @@ function renderRow(v, queue, controls) {
 
 function blockChannel(id, name) {
   if (!isBlocked(id)) { settings.blocked.push({ id, name }); persist(); }
-  document.querySelectorAll(`main .item[data-channel="${CSS.escape(id)}"]`).forEach((n) => n.remove());
+  document.querySelectorAll(`main [data-channel="${CSS.escape(id)}"]`).forEach((n) => n.remove());
   toast(`「${name}」を除外しました。設定からいつでも戻せます。`);
 }
 
@@ -548,6 +549,7 @@ window.addEventListener('popstate', () => {
 // ---------- タブと詳細ページ ----------
 const detailStack = [];
 function showTabView() {
+  $('homeView').hidden = state.tab !== 'home';
   els.search.view.hidden = state.tab !== 'search';
   els.feed.view.hidden = state.tab !== 'feed';
   els.library.view.hidden = state.tab !== 'library';
@@ -562,6 +564,7 @@ function setTab(tab) {
 }
 document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
   setTab(b.dataset.tab);
+  if (b.dataset.tab === 'home') loadHome(false);
   if (b.dataset.tab === 'feed') loadFeed(false);
   if (b.dataset.tab === 'library') loadLibrary();
 }));
@@ -576,7 +579,7 @@ function openDetail(title, render) {
 function showDetail() {
   const top = detailStack[detailStack.length - 1];
   if (!top) { $('detailView').hidden = true; showTabView(); return; }
-  els.search.view.hidden = els.feed.view.hidden = els.library.view.hidden = true;
+  els.search.view.hidden = els.feed.view.hidden = els.library.view.hidden = $('homeView').hidden = true;
   els.chips.hidden = true;
   $('detailView').hidden = false;
   $('detailTitle').textContent = top.title;
@@ -914,7 +917,7 @@ $('clearHistory').addEventListener('click', () => {
   clearArmed = false; b.textContent = '再生履歴をすべて消す';
   watchHistory = []; saveHistory();
   $('historyInfo').textContent = '再生履歴を消しました。';
-  document.querySelectorAll('main .item[data-vid]').forEach((row) => { row.classList.remove('watched'); row.querySelectorAll('.prog, .wbadge').forEach((n) => n.remove()); });
+  document.querySelectorAll('main [data-vid]').forEach((row) => { row.classList.remove('watched'); row.querySelectorAll('.prog, .wbadge').forEach((n) => n.remove()); });
 });
 
 // ---------- 選択メニュー（速度・タイマー） ----------
@@ -1324,8 +1327,8 @@ function openHistory() {
     const clearBtn = h('button', { class: 'small', type: 'button', text: 'すべて消す', onclick: () => {
       if (!armed) { armed = true; clearBtn.textContent = 'もう一度押すと全部消します'; setTimeout(() => { armed = false; clearBtn.textContent = 'すべて消す'; }, 4000); return; }
       watchHistory = []; saveHistory(); list.replaceChildren(); setMsg(msg, '再生履歴を消しました。');
-      document.querySelectorAll('main .item[data-vid]').forEach((row) => row.querySelectorAll('.prog, .wbadge').forEach((n) => n.remove()));
-      document.querySelectorAll('main .item.watched').forEach((row) => row.classList.remove('watched'));
+      document.querySelectorAll('main [data-vid]').forEach((row) => row.querySelectorAll('.prog, .wbadge').forEach((n) => n.remove()));
+      document.querySelectorAll('main .watched').forEach((row) => row.classList.remove('watched'));
     } });
     box.append(h('div', { class: 'detail-head' },
       h('div', { class: 'sub', text: `${watchHistory.length}本（最新${HISTORY_MAX}本まで・このスマホの中だけに保存）${settings.historyOn ? '' : ' ・ 記録は停止中'}` }),
@@ -1335,10 +1338,212 @@ function openHistory() {
       h('span', { class: 'hint', text: `視聴：${fmtAgo(v.at)}${v.done ? '（最後まで）' : v.pos ? `（${fmtDuration(v.pos)}まで）` : ''}` }),
       h('button', { type: 'button', text: '履歴から削除', onclick: () => {
         watchHistory = watchHistory.filter((x) => x.id !== v.id); saveHistory(); row.remove();
-        document.querySelectorAll(`main .item[data-vid="${CSS.escape(v.id)}"]`).forEach((r) => decorateRow(r, v));
+        document.querySelectorAll(`main [data-vid="${CSS.escape(v.id)}"]`).forEach((r) => decorateRow(r, v));
       } })) });
   });
 }
+
+// ---------- おすすめ（ホーム） ----------
+// 公式のおすすめはAPIで取得できないため、MyTubeの再生履歴・高評価・登録チャンネルから自前で作る
+const REC_TTL = 6 * 3600 * 1000; // 6時間は作り直さない
+const CATEGORY_NAMES = { 1: '映画・アニメ', 2: '車・乗り物', 10: '音楽', 15: 'ペット・動物', 17: 'スポーツ', 19: '旅行・イベント',
+  20: 'ゲーム', 22: 'ブログ・日常', 23: 'お笑い', 24: 'エンタメ', 25: 'ニュース・政治', 26: 'ハウツー・スタイル',
+  27: '教育', 28: '科学・技術', 29: '社会貢献' };
+const STOPWORDS = new Set(('向け おすすめ オススメ 人気 話題 動画 公式 解説 実況 生配信 配信 切り抜き 最新 方法 紹介 簡単 完全 初心者 必見 今日 本日 前編 後編 まとめ ' +
+  'ショート 公開 ライブ 企画 総集編 第一弾 チャンネル 限定 特集 本編 予告 速報 衝撃 神回 全部 やってみた してみた ' +
+  'shorts short official video the and with for live mv music full part vol feat ver hd 4k youtube new from you this that are').split(' '));
+const SEG = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('ja', { granularity: 'word' }) : null;
+
+let hiddenVideos = new Set(load('mytube.hiddenVideos', []));
+function hideVideo(id) { hiddenVideos.add(id); save('mytube.hiddenVideos', [...hiddenVideos].slice(-1000)); }
+const isWatched = (id) => !!histGet(id)?.done;
+const topOf = (map) => [...map].sort((a, b) => b[1] - a[1]);
+
+function tokenize(text) {
+  const out = new Set();
+  const clean = (text || '').replace(/[【】「」『』［］[\]()（）#＃!！?？|｜:：、。・,./"'~〜\-–—_＿&＆+＋*＊]/g, ' ');
+  const words = SEG ? [...SEG.segment(clean)].filter((s) => s.isWordLike).map((s) => s.segment)
+    : (clean.match(/[゠-ヿー]{2,}|[一-鿿々]{2,}|[A-Za-z][A-Za-z0-9]{2,}/g) || []);
+  for (let w of words) {
+    w = w.trim().toLowerCase();
+    if (w.length < 2) continue;
+    if (/^[\d０-９.,:年月日時分秒回話本]+$/.test(w)) continue;
+    if (/^[぀-ゟ]+$/.test(w) && w.length < 4) continue; // 助詞などの短いひらがな
+    if (/^[a-z]{1,2}$/.test(w) || STOPWORDS.has(w)) continue;
+    out.add(w);
+  }
+  return [...out];
+}
+
+// 視聴の傾向を数値にする（最近見たものほど重く、最後まで見た・高評価したものはさらに重く）
+function buildSignals(liked) {
+  const ch = new Map(); const kw = new Map(); const cat = new Map(); const chNames = new Map();
+  const add = (map, k, w) => map.set(k, (map.get(k) || 0) + w);
+  const use = (v, w) => {
+    if (v.channelId) { add(ch, v.channelId, w); chNames.set(v.channelId, decode(v.channel)); }
+    for (const t of tokenize(decode(v.title))) add(kw, t, w);
+    for (const tag of (v.tags || []).slice(0, 8)) for (const t of tokenize(tag)) add(kw, t, w * 0.5);
+    if (v.cat) add(cat, String(v.cat), w);
+  };
+  const now = Date.now();
+  for (const e of watchHistory) use(e, (e.done ? 1.5 : 1) * Math.exp(-(now - (e.at || now)) / 86400000 / 30));
+  for (const v of liked) use(v, 1.5);
+  const nameWords = new Set([...chNames.values()].map((n) => n.toLowerCase()));
+  return { ch, kw, cat, chNames, nameWords };
+}
+
+async function buildRecommendations(progress) {
+  let liked = []; const subs = new Set();
+  if (isLoggedIn() && tokenValid()) { // ここではログイン画面は出さない（期限切れなら履歴だけで作る）
+    try {
+      progress('高評価した動画を確認しています…');
+      const r = await apiAuth('GET', 'videos', { part: 'snippet', myRating: 'like', maxResults: 50 }, null, 1);
+      liked = (r.items || []).map((v) => ({ channelId: v.snippet.channelId, channel: v.snippet.channelTitle,
+        title: v.snippet.title, cat: v.snippet.categoryId, tags: v.snippet.tags || [] }));
+    } catch { /* 高評価なしで続ける */ }
+    try {
+      let pt = '';
+      do {
+        const r = await apiAuth('GET', 'subscriptions', { part: 'snippet', mine: 'true', maxResults: 50, pageToken: pt }, null, 1);
+        for (const s of r.items || []) subs.add(s.snippet.resourceId.channelId);
+        pt = r.nextPageToken || '';
+      } while (pt);
+    } catch { /* 登録なしで続ける */ }
+  }
+  const sig = buildSignals(liked);
+  const used = new Set(); const sections = [];
+  const keep = (items, n = 20) => items.filter((v) => !used.has(v.id) && !hiddenVideos.has(v.id) && !isWatched(v.id))
+    .slice(0, n).map((v) => { used.add(v.id); return v; });
+
+  // 1. よく見るのに未登録のチャンネルの新着
+  const chans = topOf(sig.ch).filter(([id, s]) => s >= 1.5 && !subs.has(id) && !isBlocked(id)).slice(0, 8);
+  if (chans.length) {
+    progress('よく見るチャンネルの新着を集めています…');
+    const lists = await pool(chans, 4, async ([id]) =>
+      (await api('playlistItems', { part: 'contentDetails', playlistId: 'UU' + id.slice(2), maxResults: 4 }, 1)).items || []);
+    const ids = lists.filter(Boolean).flat().map((it) => it.contentDetails.videoId);
+    const items = (await fetchVideoItems(ids, {})).sort((a, b) => (b.published > a.published ? 1 : -1));
+    const k = keep(items);
+    if (k.length) sections.push({ title: 'よく見るチャンネルの新着', items: k,
+      reason: chans.slice(0, 3).map(([id]) => sig.chNames.get(id)).filter(Boolean).join('、') + ' など、よく見ているチャンネル' });
+  }
+
+  // 2. よく出てくる言葉で検索（1語100ユニットなので2語まで）
+  const hiddenKw = new Set(settings.hiddenKeywords || []);
+  const kws = topOf(sig.kw).filter(([w, s]) => s >= 1.5 && !hiddenKw.has(w) && !sig.nameWords.has(w)).slice(0, 2);
+  for (const [w] of kws) {
+    progress(`「${w}」の動画を探しています…`);
+    const params = { part: 'snippet', type: 'video', maxResults: 25, q: w };
+    if (settings.jaOnly) { params.relevanceLanguage = 'ja'; params.regionCode = 'JP'; }
+    if (settings.minMin >= 20) params.videoDuration = 'long';
+    const r = await api('search', params, 100);
+    const ids = (r.items || []).map((it) => it.id?.videoId).filter((id) => id && !isBlocked(r.items.find((x) => x.id.videoId === id).snippet.channelId));
+    const k = keep(await fetchVideoItems(ids, { lang: true }));
+    if (k.length) sections.push({ title: `「${w}」のおすすめ`, keyword: w, items: k, reason: `「${w}」が入った動画をよく見ているため` });
+  }
+
+  // 3. よく見るジャンルの人気動画
+  const cats = topOf(sig.cat).filter(([, s]) => s >= 1).slice(0, 3);
+  for (const [c] of cats) {
+    try {
+      progress(`${CATEGORY_NAMES[c] || 'ジャンル'}の人気動画を集めています…`);
+      const r = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails', chart: 'mostPopular', regionCode: 'JP', videoCategoryId: c, maxResults: 25 }, 1);
+      const k = keep((r.items || []).map((v) => toItem(v, {})).filter(Boolean));
+      if (k.length) sections.push({ title: `${CATEGORY_NAMES[c] || '好きなジャンル'}の人気動画`, items: k, reason: `${CATEGORY_NAMES[c] || 'このジャンル'}の動画をよく見ているため` });
+    } catch { /* このジャンルは人気一覧がない */ }
+  }
+
+  // 材料が足りないときは日本の人気動画
+  if (!sections.length) {
+    progress('人気の動画を集めています…');
+    const r = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails', chart: 'mostPopular', regionCode: 'JP', maxResults: 30 }, 1);
+    const k = keep((r.items || []).map((v) => toItem(v, {})).filter(Boolean));
+    if (k.length) sections.push({ title: '日本の人気動画', items: k, reason: '視聴データがまだ少ないため、人気の動画を表示しています。見るほど、あなた向けに変わっていきます。' });
+  }
+  return { at: Date.now(), basis: watchHistory.length + liked.length, sections };
+}
+
+function durText(v) { return v.live === 'live' ? 'ライブ' : v.live === 'upcoming' ? '予定' : fmtDuration(v.sec || 0); }
+
+function renderCard(v, queue, onNope) {
+  const play = () => openPlayer(v, queue);
+  const card = h('article', { class: 'card', 'data-vid': v.id, 'data-channel': v.channelId },
+    h('div', { class: 'thumb-wrap' },
+      h('button', { class: 'thumb', 'aria-label': '再生', onclick: play },
+        h('img', { src: v.thumb || 'icon.svg', alt: '', loading: 'lazy' }), h('span', { class: 'dur', text: durText(v) })),
+      h('button', { class: 'nope', type: 'button', 'aria-label': onNope ? '続きから見るから外す' : '興味なし', text: '✕', onclick: () => {
+        if (onNope) onNope(v); else hideVideo(v.id);
+        const i = queue.indexOf(v); if (i >= 0) queue.splice(i, 1);
+        card.remove();
+        toast(onNope ? '「続きから見る」から外しました。' : 'この動画はおすすめに表示しません。');
+      } })),
+    h('button', { class: 'title', text: decode(v.title), onclick: play }),
+    h('div', { class: 'sub' }, h('button', { class: 'link', text: decode(v.channel), onclick: () => openChannel(v.channelId, decode(v.channel)) })));
+  decorateRow(card, v);
+  return card;
+}
+
+function homeSection({ title, reason, items, keyword, onNope }) {
+  const q = items.slice();
+  const row = h('div', { class: 'carousel' }, q.map((v) => renderCard(v, q, onNope)));
+  const extra = keyword ? h('button', { class: 'small', type: 'button', text: 'この話題は不要', onclick: () => {
+    settings.hiddenKeywords = [...new Set([...(settings.hiddenKeywords || []), keyword])]; persist();
+    const c = load('mytube.rec', null);
+    if (c) { c.sections = c.sections.filter((s) => s.keyword !== keyword); save('mytube.rec', c); }
+    sec.remove();
+    toast(`「${keyword}」はおすすめに出さないようにしました。`);
+  } }) : null;
+  const sec = h('section', { class: 'home-sec' },
+    h('div', { class: 'section-head' },
+      h('div', { style: 'min-width:0' }, h('h2', { text: title }), reason ? h('div', { class: 'hint', text: reason }) : null), extra),
+    row);
+  return sec;
+}
+
+function renderHome(rec) {
+  const box = $('homeContent');
+  box.replaceChildren();
+  const cont = watchHistory.filter((e) => !e.done && !e.dismissed && e.pos >= RESUME_MIN && !isBlocked(e.channelId)).slice(0, 15);
+  if (cont.length) box.append(homeSection({ title: '続きから見る', items: cont,
+    onNope: (v) => { const e = histGet(v.id); if (e) { e.dismissed = true; saveHistory(); } } }));
+  for (const s of rec?.sections || []) {
+    const items = s.items.filter((v) => !hiddenVideos.has(v.id) && !isWatched(v.id) && !isBlocked(v.channelId));
+    if (items.length) box.append(homeSection({ title: s.title, reason: s.reason, items, keyword: s.keyword }));
+  }
+  if (!box.children.length) box.append(h('div', { class: 'empty', text: 'おすすめにできる動画が見つかりませんでした。「更新」で作り直せます。' }));
+  if (rec) setMsg($('homeStatus'), `作成：${fmtAgo(rec.at)}（MyTubeの再生履歴${watchHistory.length}本などをもとに作成）`);
+}
+
+let homeLoading = false;
+async function loadHome(force) {
+  const status = $('homeStatus');
+  if (!settings.apiKey) {
+    $('homeContent').replaceChildren(h('div', { class: 'empty', text: '最初に右上の設定ボタンからAPIキーを入れてください。' }));
+    setMsg(status, ''); return;
+  }
+  const cache = load('mytube.rec', null);
+  if (!force && cache && Date.now() - cache.at < REC_TTL) { renderHome(cache); return; }
+  if (homeLoading) return;
+  homeLoading = true; $('homeRefresh').hidden = true;
+  if (cache) renderHome(cache);
+  setMsg(status, 'おすすめを作っています…');
+  try {
+    const rec = await buildRecommendations((t) => setMsg(status, t));
+    save('mytube.rec', rec);
+    renderHome(rec);
+  } catch (e) {
+    if (!cache) renderHome(null);
+    setMsg(status, e.message, true);
+  } finally { homeLoading = false; $('homeRefresh').hidden = false; }
+}
+$('homeRefresh').addEventListener('click', () => loadHome(true));
+$('resetRec').addEventListener('click', () => {
+  hiddenVideos = new Set(); save('mytube.hiddenVideos', []);
+  settings.hiddenKeywords = []; persist();
+  watchHistory.forEach((e) => { e.dismissed = false; }); saveHistory();
+  remove('mytube.rec');
+  $('recMsg').textContent = 'リセットしました。次にホームを開いたときに作り直します。';
+});
 
 // ---------- 起動 ----------
 els.form.addEventListener('submit', (e) => { e.preventDefault(); els.q.blur(); runSearch(true); });
@@ -1350,7 +1555,8 @@ $('feedLogin').addEventListener('click', () => {
 renderChips();
 renderAccount();
 updateSpeedLabel();
-setTab('search');
+setTab('home');
+loadHome(false);
 if (settings.clientId) loadGis().then(initTokenClient).catch(() => {}); // 先に読み込んでおくとログインのポップアップが止められにくい
 loadYouTubeApi().catch(() => {});
 if (!settings.apiKey) setMsg(els.search.status, '最初に右上の設定ボタンからAPIキーを入れてください。');

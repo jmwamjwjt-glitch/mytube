@@ -67,9 +67,18 @@ body.has-mini main { padding-bottom: calc(110px + env(safe-area-inset-bottom, 0p
 .prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.45); }
 .prog span { display: block; height: 100%; background: var(--accent); }
 .wbadge { position: absolute; left: 4px; top: 4px; background: rgba(0,0,0,.78); color: #fff; font-size: 11px; padding: 0 5px; border-radius: 3px; }
-.item.watched .thumb img { opacity: .5; }
-.item.watched .title { color: var(--muted); }
+.watched .thumb img { opacity: .5; }
+.watched .title { color: var(--muted); }
 .meta { min-width: 0; }
+.home-sec { margin-bottom: 20px; }
+.home-sec .section-head { margin-top: 8px; align-items: flex-start; }
+.carousel { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; padding-bottom: 4px; }
+.carousel::-webkit-scrollbar { display: none; }
+.card { flex: 0 0 64%; max-width: 260px; min-width: 0; scroll-snap-align: start; display: flex; flex-direction: column; gap: 4px; }
+.card .thumb-wrap { position: relative; }
+.card .title { font-size: 13px; -webkit-line-clamp: 2; }
+.nope { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; border-radius: 50%; border: 0;
+  background: rgba(0,0,0,.62); color: #fff; font-size: 13px; display: grid; place-items: center; }
 .title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; display: -webkit-box;
   -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; background: none; border: 0;
   padding: 0; text-align: left; }
@@ -214,8 +223,9 @@ body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
       </button>
     </div>
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" data-tab="search" aria-selected="true">検索</button>
-      <button class="tab" role="tab" data-tab="feed" aria-selected="false">登録チャンネル</button>
+      <button class="tab" role="tab" data-tab="home" aria-selected="true">ホーム</button>
+      <button class="tab" role="tab" data-tab="search" aria-selected="false">検索</button>
+      <button class="tab" role="tab" data-tab="feed" aria-selected="false">登録</button>
       <button class="tab" role="tab" data-tab="library" aria-selected="false">ライブラリ</button>
     </div>
     <div class="chips" id="chips" aria-label="クイックフィルタ"></div>
@@ -223,7 +233,15 @@ body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
 </header>
 
 <main>
-  <section id="searchView">
+  <section id="homeView" hidden>
+    <div class="feed-head">
+      <div class="status" id="homeStatus" aria-live="polite"></div>
+      <button class="small" id="homeRefresh" type="button">更新</button>
+    </div>
+    <div id="homeContent"></div>
+  </section>
+
+  <section id="searchView" hidden>
     <div class="status" id="status" aria-live="polite"></div>
     <div class="list" id="list"></div>
     <button class="more" id="more" hidden>さらに読み込む</button>
@@ -296,6 +314,11 @@ body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
     <label class="check"><input type="checkbox" id="historyOn"> 再生履歴と再生位置を記録する（1秒以上再生した動画）</label>
     <p class="hint" id="historyInfo"></p>
     <div class="account-actions"><button type="button" id="clearHistory">再生履歴をすべて消す</button></div>
+
+    <h3>おすすめ（ホーム）</h3>
+    <p class="hint">MyTubeの再生履歴・高評価・登録チャンネルから作ります。6時間ごとに作り直します（1回あたり約200ユニット）。</p>
+    <div class="account-actions"><button type="button" id="resetRec">「興味なし」「この話題は不要」をリセット</button></div>
+    <p class="hint" id="recMsg" aria-live="polite"></p>
 
     <h3>検索の条件</h3>
     <div class="field">
@@ -426,6 +449,6 @@ body.has-mini .toast { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112303" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112304" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
