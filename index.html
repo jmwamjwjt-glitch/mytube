@@ -231,12 +231,18 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .cbtn .cc { font-size: 11px; font-weight: 800; border: 2px solid currentColor; border-radius: 4px; padding: 0 3px; line-height: 14px; }
 .cbtn[aria-pressed="true"] .cc { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .ptime { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 6px; white-space: nowrap; }
-/* Fullscreen: video fills the screen, control bar stays below it */
-.player:fullscreen { background: #000; display: flex; flex-direction: column; padding: 0; }
-.player:fullscreen .frame { flex: 1; aspect-ratio: auto; height: auto; }
-.player:fullscreen .info { display: none; }
-.player:fullscreen .pctrl { background: #000; border: 0; --fg: #fff; --line: #444; --chip: #222; --muted: #bbb; color: #fff;
+/* Fullscreen (phone turned sideways, or Chrome fullscreen): video fills the screen.
+   The control bar stays below the video and hides itself while playing, so the video gets the whole height. */
+.player.fs, .player:fullscreen { background: #000; display: flex; flex-direction: column; padding: 0; }
+.player.fs .frame, .player:fullscreen .frame { flex: 1; aspect-ratio: auto !important; height: auto !important; }
+.player.fs .info, .player:fullscreen .info { display: none; }
+.player.fs .pctrl, .player:fullscreen .pctrl { background: #000; border: 0; --fg: #fff; --line: #444; --chip: #222; --muted: #bbb; color: #fff;
   padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); }
+.player.fs .pctrl.hide, .player:fullscreen .pctrl.hide { display: none; }
+.player.fs .pctrl-row, .player:fullscreen .pctrl-row { height: 48px; gap: 8px; }
+.player.fs .cbtn, .player:fullscreen .cbtn { width: 48px; height: 48px; }
+.player.fs #back10 .ic, .player.fs #fwd10 .ic, .player:fullscreen #back10 .ic, .player:fullscreen #fwd10 .ic { width: 30px; height: 30px; }
+.player.fs .cbtn .n10, .player:fullscreen .cbtn .n10 { top: 19px; font-size: 9px; }
 .player .info { flex: 1; overflow-y: auto; padding: 12px var(--gut) calc(24px + env(safe-area-inset-bottom, 0px)); }
 .ptitle-btn { display: block; width: 100%; border: 0; background: none; padding: 0; text-align: left; }
 .ptitle-btn h2 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -436,6 +442,8 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
     <h3>再生</h3>
     <label class="check"><input type="checkbox" id="autoNext"> 終わったら次の動画を自動で再生</label>
     <label class="check"><input type="checkbox" id="cc"> 字幕を最初からオンにする</label>
+    <label class="check"><input type="checkbox" id="fsChrome"> 全画面ボタンで Chrome の全画面を使う</label>
+    <p class="hint">オン：上下のバーも消えて画面いっぱいになりますが、毎回「全画面表示を終了するには…」の案内が出ます。オフ（標準）：スマホを横向きにするとアプリ内で全画面になり、案内は出ません。</p>
     <div class="field">
       <label for="speed">いつもの再生速度</label>
       <select id="speed">
@@ -690,6 +698,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112317" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112318" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>

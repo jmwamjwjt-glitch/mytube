@@ -1153,6 +1153,7 @@ function openSettings() {
   $('noLive').checked = settings.noLive;
   $('autoNext').checked = settings.autoNext;
   $('cc').checked = settings.cc;
+  $('fsChrome').checked = !!settings.fsChrome;
   $('speed').value = String(settings.speed);
   $('historyOn').checked = settings.historyOn;
   $('feedTtl').value = String(settings.feedTtlMin || 10);
@@ -1184,6 +1185,7 @@ function readSettingsForm() {
   settings.noLive = $('noLive').checked;
   settings.autoNext = $('autoNext').checked;
   settings.cc = $('cc').checked;
+  settings.fsChrome = $('fsChrome').checked;
   settings.speed = parseFloat($('speed').value) || 1;
   settings.historyOn = $('historyOn').checked;
   settings.feedTtlMin = parseInt($('feedTtl').value, 10) || 10;
@@ -1382,17 +1384,50 @@ $('ccBtn').addEventListener('click', () => {
   } catch { toast('この動画では字幕を切り替えられませんでした。'); }
 });
 
-// 全画面（横向き）。操作バーは動画の下に残す
-$('fsBtn').addEventListener('click', async () => {
-  try {
-    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
-    await $('player').requestFullscreen({ navigationUI: 'hide' });
-    try { await screen.orientation?.lock?.('landscape'); } catch { /* 向きを固定できない端末もある */ }
-  } catch { toast('全画面にできませんでした。'); }
-});
+// ---------- 全画面 ----------
+// ・スマホを横向きにすると、アプリの中で全画面になる（Chrome の「全画面を終了するには…」の案内は出ない）
+// ・設定で「Chrome の全画面」を選ぶと、上下のバーも消えて画面いっぱいになる（その代わり案内が出る）
+// ・全画面中は、再生しているあいだ操作バーを隠して動画を最大にする。一時停止（動画をタップ）するとバーが出る
+const landscapeMq = matchMedia('(orientation: landscape) and (max-height: 600px)');
+let fsHideTimer = null;
+const isFs = () => $('player').classList.contains('fs') || !!document.fullscreenElement;
+function updateFsMode() {
+  const on = playerMode === 'full' && (landscapeMq.matches || !!document.fullscreenElement);
+  $('player').classList.toggle('fs', on);
+  $('fsBtn').setAttribute('aria-label', on ? '全画面を終了' : '全画面');
+  if (on) bumpFsBar(); else { clearTimeout(fsHideTimer); $('pCtrl').classList.remove('hide'); }
+}
+// 操作バーを出して、再生中なら3秒後に隠す
+function bumpFsBar() {
+  $('pCtrl').classList.remove('hide');
+  clearTimeout(fsHideTimer);
+  if (!isFs()) return;
+  fsHideTimer = setTimeout(() => {
+    try { if (isFs() && !seeking && ytPlayer.getPlayerState() === window.YT.PlayerState.PLAYING) $('pCtrl').classList.add('hide'); } catch { /* noop */ }
+  }, 3000);
+}
+landscapeMq.addEventListener('change', updateFsMode);
+$('pCtrl').addEventListener('pointerdown', bumpFsBar);
 document.addEventListener('fullscreenchange', () => {
-  $('fsBtn').setAttribute('aria-label', document.fullscreenElement ? '全画面を終了' : '全画面');
   if (!document.fullscreenElement) { try { screen.orientation?.unlock?.(); } catch { /* noop */ } }
+  updateFsMode();
+});
+$('fsBtn').addEventListener('click', async () => {
+  if (isFs()) { // 終了
+    if (document.fullscreenElement) { await document.exitFullscreen().catch(() => {}); return; }
+    try { await screen.orientation.lock('portrait'); setTimeout(() => { try { screen.orientation.unlock(); } catch { /* noop */ } }, 1500); }
+    catch { toast('スマホを縦向きに戻すと、全画面が終わります。'); }
+    return;
+  }
+  if (settings.fsChrome) { // Chrome の全画面（画面いっぱい・案内が出る）
+    try {
+      await $('player').requestFullscreen({ navigationUI: 'hide' });
+      try { await screen.orientation?.lock?.('landscape'); } catch { /* 向きを固定できない端末もある */ }
+    } catch { toast('全画面にできませんでした。'); }
+    return;
+  }
+  try { await screen.orientation.lock('landscape'); }
+  catch { toast('スマホを横向きにすると全画面になります（画面の自動回転をオンにしてください）。'); }
 });
 
 function onYtState(e) {
@@ -1408,6 +1443,7 @@ function onYtState(e) {
     if (e.data === S.ENDED) saveCurrentProgress(true);
     if (e.data === S.PAUSED || e.data === S.ENDED) setMiniPlaying(false);
   }
+  if (isFs()) { if (e.data === S.PLAYING) bumpFsBar(); else if (e.data === S.PAUSED || e.data === S.ENDED) { clearTimeout(fsHideTimer); $('pCtrl').classList.remove('hide'); } }
   if (e.data === S.ENDED) {
     if (sleep.endOfVideo) { clearSleep(); toast('タイマーで停止しました。'); return; }
     if (settings.autoNext) playNext();
@@ -1454,6 +1490,7 @@ function showFullPlayer() {
   $('player').hidden = false;
   document.body.classList.remove('has-mini');
   if (!wasFull) navPush('player');
+  updateFsMode();
 }
 function minimizePlayer() {
   if (playerMode !== 'full') return;
