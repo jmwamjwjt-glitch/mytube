@@ -1342,19 +1342,73 @@ function updateTimeUi() {
     const p = dur ? (cur / dur) * 1000 : 0;
     $('seek').value = String(Math.round(p));
     $('seek').style.setProperty('--p', `${p / 10}%`);
+    showChapterAt(cur);
+    if (curChapters.length && !$('chapMarks').childElementCount) drawChapterMarks(); // 長さが分かってから印を描く
   } catch { /* noop */ }
 }
 setInterval(() => { if (playerMode === 'full') updateTimeUi(); }, 500);
+
+// シークバーを動かしている間は、動画そのものをその位置へ動かして「動かした先の画」を見せる（0.35秒ごと）
+let scrubTimer = null; let scrubTarget = null;
 $('seek').addEventListener('input', () => {
   seeking = true;
   const p = +$('seek').value / 1000;
   $('seek').style.setProperty('--p', `${p * 100}%`);
-  try { $('ptime').textContent = `${fmtDuration(Math.floor(p * ytPlayer.getDuration()))} / ${fmtDuration(Math.floor(ytPlayer.getDuration()))}`; } catch { /* noop */ }
+  try {
+    const dur = ytPlayer.getDuration(); const t = p * dur;
+    $('ptime').textContent = `${fmtDuration(Math.floor(t))} / ${fmtDuration(Math.floor(dur))}`;
+    showChapterAt(t);
+    scrubTarget = t;
+    if (!scrubTimer) {
+      ytPlayer.seekTo(t, true);
+      scrubTimer = setTimeout(() => { scrubTimer = null; if (seeking && scrubTarget != null) try { ytPlayer.seekTo(scrubTarget, true); } catch { /* noop */ } }, 350);
+    }
+  } catch { /* noop */ }
 });
 $('seek').addEventListener('change', () => {
+  clearTimeout(scrubTimer); scrubTimer = null; scrubTarget = null;
   try { ytPlayer.seekTo((+$('seek').value / 1000) * ytPlayer.getDuration(), true); } catch { /* noop */ }
   seeking = false;
 });
+
+// ---------- チャプター ----------
+let curChapters = []; // [{ sec, t, label }]
+function setChapters(list) {
+  curChapters = list || [];
+  $('chapMarks').replaceChildren();
+  $('chapBtn').hidden = !curChapters.length;
+  $('chapIcon').hidden = !curChapters.length;
+  if (curChapters.length) { drawChapterMarks(); showChapterAt(0); }
+}
+// シークバーにチャプターの区切りを描く
+function drawChapterMarks() {
+  let dur = 0; try { dur = ytPlayer?.getDuration?.() || current?.sec || 0; } catch { /* noop */ }
+  if (!dur) return;
+  $('chapMarks').replaceChildren(...curChapters.filter((c) => c.sec > 0 && c.sec < dur)
+    .map((c) => h('span', { style: `left:${(c.sec / dur) * 100}%` })));
+}
+function chapterAt(t) {
+  let found = null;
+  for (const c of curChapters) if (c.sec <= t + 0.5) found = c;
+  return found;
+}
+let shownChapter = null;
+function showChapterAt(t) {
+  if (!curChapters.length) return;
+  const c = chapterAt(t) || curChapters[0];
+  if (c === shownChapter) return;
+  shownChapter = c;
+  $('chapLabel').textContent = c.label;
+}
+function openChapterList() {
+  if (!curChapters.length) return;
+  let now = 0; try { now = ytPlayer.getCurrentTime(); } catch { /* noop */ }
+  const cur = chapterAt(now);
+  openMenu('チャプター', curChapters.map((c) => ({ label: `${c.t}　${c.label}`, selected: c === cur,
+    onclick: () => { try { ytPlayer.seekTo(c.sec, true); ytPlayer.playVideo(); } catch { /* noop */ } updateTimeUi(); } })));
+}
+$('chapBtn').addEventListener('click', openChapterList);
+$('chapIcon').addEventListener('click', openChapterList);
 const skip = (sec) => {
   try {
     const dur = ytPlayer.getDuration() || Infinity;
@@ -1558,6 +1612,7 @@ function renderPlayerInfo(v) {
   likeCount = null; commentsFor = null;
   $('pTitle').textContent = decode(v.title);
   $('miniT').textContent = decode(v.title);
+  setChapters([]); shownChapter = null;
   $('miniSub').textContent = decode(v.channel);
   $('pStats').textContent = `${fmtCount(v.views)} 回視聴 ${fmtAgo(v.published)}`;
   $('pTitleBtn').setAttribute('aria-expanded', 'false');
@@ -1592,6 +1647,7 @@ function renderPlayerInfo(v) {
     $('pDesc').textContent = d.snippet.description || '（説明はありません）';
     $('cCount').textContent = st.commentCount != null ? fmtCount(st.commentCount) : '';
     const chapters = parseChapters(d.snippet.description);
+    setChapters(chapters);
     if (chapters.length) {
       $('chapters').replaceChildren(...chapters.map((c) => h('button', { type: 'button', onclick: () => { try { ytPlayer.seekTo(c.sec, true); ytPlayer.playVideo(); } catch { /* noop */ } } },
         h('span', { class: 'ts', text: c.t }), h('span', { text: c.label }))));
