@@ -224,6 +224,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 #seek::-moz-range-progress { height: 3px; background: #ff0033; }
 #seek::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: #ff0033; }
 .pctrl-row { display: flex; align-items: center; gap: 2px; height: 40px; }
+.pc-left, .pc-right { display: flex; align-items: center; gap: 2px; }
 .cbtn { position: relative; width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: none; color: var(--fg); display: grid; place-items: center; }
 .cbtn:active { background: var(--chip); }
 .cbtn.big .ic { width: 28px; height: 28px; }
@@ -231,16 +232,28 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .cbtn .cc { font-size: 11px; font-weight: 800; border: 2px solid currentColor; border-radius: 4px; padding: 0 3px; line-height: 14px; }
 .cbtn[aria-pressed="true"] .cc { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .ptime { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 6px; white-space: nowrap; }
-/* Fullscreen (phone turned sideways, or Chrome fullscreen): video fills the screen.
-   The control bar stays below the video and hides itself while playing, so the video gets the whole height. */
-.player.fs, .player:fullscreen { background: #000; display: flex; flex-direction: column; padding: 0; }
-.player.fs .frame, .player:fullscreen .frame { flex: 1; aspect-ratio: auto !important; height: auto !important; }
+/* Fullscreen (phone turned sideways, or Chrome fullscreen):
+   the YouTube player is sized to exactly the video (16:9) in the middle, and our buttons sit in the empty side spaces —
+   beside the video, never on top of it. Only a thin seek bar runs under the video, so the video gets almost the full height. */
+.player.fs, .player:fullscreen { background: #000; display: grid; position: fixed; inset: 0;
+  padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  grid-template-columns: minmax(64px, 1fr) auto minmax(64px, 1fr); grid-template-rows: minmax(0, 1fr) 30px;
+  grid-template-areas: "left video right" "left seek right";
+  --fg: #fff; --line: #444; --chip: #222; --muted: #bbb; color: #fff; }
+.player.fs .frame, .player:fullscreen .frame { grid-area: video; height: 100% !important; width: auto; aspect-ratio: 16/9 !important;
+  max-width: calc(100vw - 128px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); justify-self: center; align-self: center; }
+.player.fs[data-short="1"] .frame, .player:fullscreen[data-short="1"] .frame { aspect-ratio: 9/16 !important; }
 .player.fs .info, .player:fullscreen .info { display: none; }
-.player.fs .pctrl, .player:fullscreen .pctrl { background: #000; border: 0; --fg: #fff; --line: #444; --chip: #222; --muted: #bbb; color: #fff;
-  padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); }
-.player.fs .pctrl.hide, .player:fullscreen .pctrl.hide { display: none; }
-.player.fs .pctrl-row, .player:fullscreen .pctrl-row { height: 48px; gap: 8px; }
+.player.fs .pctrl, .player.fs .pctrl.hide, .player.fs .pctrl-row,
+.player:fullscreen .pctrl, .player:fullscreen .pctrl.hide, .player:fullscreen .pctrl-row { display: contents; }
+.player.fs #seek, .player:fullscreen #seek { grid-area: seek; align-self: center; }
+.player.fs .spacer, .player:fullscreen .spacer { display: none; }
+.player.fs .pc-left, .player:fullscreen .pc-left { grid-area: left; flex-direction: column; justify-content: center; gap: 14px; }
+.player.fs .pc-right, .player:fullscreen .pc-right { grid-area: right; flex-direction: column; justify-content: center; gap: 14px; }
+.player.fs #pMin, .player:fullscreen #pMin { position: absolute; top: 8px; left: calc(8px + env(safe-area-inset-left, 0px)); }
+.player.fs .ptime, .player:fullscreen .ptime { margin: 0; font-size: 11px; line-height: 1.35; text-align: center; white-space: normal; max-width: 64px; }
 .player.fs .cbtn, .player:fullscreen .cbtn { width: 48px; height: 48px; }
+.player.fs .cbtn.big .ic, .player:fullscreen .cbtn.big .ic { width: 34px; height: 34px; }
 .player.fs #back10 .ic, .player.fs #fwd10 .ic, .player:fullscreen #back10 .ic, .player:fullscreen #fwd10 .ic { width: 30px; height: 30px; }
 .player.fs .cbtn .n10, .player:fullscreen .cbtn .n10 { top: 19px; font-size: 9px; }
 .player .info { flex: 1; overflow-y: auto; padding: 12px var(--gut) calc(24px + env(safe-area-inset-bottom, 0px)); }
@@ -607,6 +620,7 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   <div class="pctrl" id="pCtrl">
     <input type="range" id="seek" min="0" max="1000" step="1" value="0" aria-label="再生位置">
     <div class="pctrl-row">
+      <div class="pc-left">
       <button class="cbtn" id="pMin" type="button" aria-label="小さくする">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
       </button>
@@ -617,12 +631,15 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
       <button class="cbtn" id="fwd10" type="button" aria-label="10秒進める">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v4h-4"/></svg></span><span class="n10">10</span>
       </button>
-      <span class="ptime" id="ptime">0:00 / 0:00</span>
+      </div>
       <span class="spacer"></span>
+      <div class="pc-right">
+      <span class="ptime" id="ptime">0:00 / 0:00</span>
       <button class="cbtn" id="ccBtn" type="button" aria-label="字幕" aria-pressed="false"><span class="cc">CC</span></button>
       <button class="cbtn" id="fsBtn" type="button" aria-label="全画面">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></span>
       </button>
+      </div>
     </div>
   </div>
   <div class="mini-bar">
@@ -723,6 +740,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112320" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112321" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
