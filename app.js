@@ -1791,8 +1791,51 @@ async function buildRecommendations(progress) {
   }
   const kwCandidates = autoCands.map(([w]) => w).filter((w) => !autoKws.includes(w)).slice(0, 12);
 
-  // 3. よく見るジャンルの人気動画
-  const cats = topOf(sig.cat).filter(([, s]) => s >= 1).slice(0, 3);
+  // 3. 掘り出し物：好きな話題の動画のうち、登録者が少ないのに再生や評価が伸びているチャンネルの動画
+  const gemWords = [...new Set([...custom, ...autoKws, ...autoCands.map(([w]) => w)])].slice(0, 4);
+  if (gemWords.length) {
+    try {
+      progress('掘り出し物を探しています…');
+      const seenCh = new Set(watchHistory.map((e) => e.channelId));
+      const params = { part: 'snippet', type: 'video', maxResults: 50, q: gemWords.join('|'), // | は「どれか」
+        publishedAfter: new Date(Date.now() - 365 * 86400000).toISOString() };
+      if (settings.jaOnly) { params.relevanceLanguage = 'ja'; params.regionCode = 'JP'; }
+      if (settings.minMin >= 20) params.videoDuration = 'long';
+      const r = await api('search', params, 100);
+      const ids = (r.items || []).filter((it) => it.id?.videoId && !subs.has(it.snippet.channelId) && !seenCh.has(it.snippet.channelId) && !isBlocked(it.snippet.channelId))
+        .map((it) => it.id.videoId);
+      if (ids.length) {
+        const det = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, id: ids.join(',') }, 1);
+        const chIds = [...new Set((det.items || []).map((v) => v.snippet.channelId))];
+        const chs = await api('channels', { part: 'statistics', id: chIds.join(','), maxResults: 50 }, 1);
+        const subsOf = new Map((chs.items || []).map((c) => [c.id, c.statistics?.hiddenSubscriberCount ? null : +c.statistics?.subscriberCount]));
+        const gems = [];
+        for (const v of det.items || []) {
+          const item = toItem(v, { lang: true });
+          if (!item || isShort(item)) continue;
+          const views = +v.statistics?.viewCount || 0; const likes = +v.statistics?.likeCount || 0;
+          const subsN = subsOf.get(v.snippet.channelId);
+          if (subsN == null || subsN > 50000) continue;      // 登録者5万人以下の小さめのチャンネル
+          if (views < 1000) continue;                         // ある程度は見られている
+          const likeRate = likes / views;
+          if (likeRate < 0.02) continue;                      // 高評価率2%以上
+          const reach = Math.min(views / Math.max(subsN, 100), 20); // 登録者数の何倍見られたか
+          if (reach < 0.5) continue;
+          item.gemScore = likeRate * Math.log10(views) * Math.sqrt(reach);
+          gems.push(item);
+        }
+        gems.sort((a, b) => b.gemScore - a.gemScore);
+        const perCh = new Map();
+        const picked = gems.filter((g) => { const n = perCh.get(g.channelId) || 0; perCh.set(g.channelId, n + 1); return n < 2; }); // 1チャンネル2本まで
+        const k = keep(picked);
+        if (k.length) sections.push({ title: '掘り出し物', items: k, gem: true,
+          reason: `「${gemWords.join('」「')}」の動画から、登録者が少ないのに評価が高いチャンネルを選んでいます（まだ見たことのないチャンネルだけ）` });
+      }
+    } catch (e) { if (/上限/.test(e.message)) throw e; }
+  }
+
+  // 4. よく見るジャンルの人気動画（「ブログ・日常」は既定のジャンルで好みを表さないので使わない）
+  const cats = topOf(sig.cat).filter(([c, s]) => s >= 1 && c !== '22').slice(0, 3);
   for (const [c] of cats) {
     try {
       progress(`${CATEGORY_NAMES[c] || 'ジャンル'}の人気動画を集めています…`);
@@ -1862,8 +1905,8 @@ const KW_MAX = 8;
 let kwDirty = false;
 function kwCostText() {
   const n = (settings.customKeywords || []).length + (settings.autoKwCount ?? 2);
-  const per = n * 100 + 20;
-  return `いまの設定：ワード${n}個 → おすすめを1回作るごとに約${per}ユニット（6時間ごとに作り直すので、1日最大 約${per * 4}／10,000）`;
+  const per = n * 100 + 120; // ＋掘り出し物の検索100
+  return `いまの設定：ワード${n}個＋掘り出し物 → おすすめを1回作るごとに約${per}ユニット（6時間ごとに作り直すので、1日最大 約${per * 4}／10,000）`;
 }
 function renderKwEditor() {
   const custom = settings.customKeywords || [];
