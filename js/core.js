@@ -3,6 +3,7 @@
 const API = 'https://www.googleapis.com/youtube/v3/';
 const YT_SCOPE = 'https://www.googleapis.com/auth/youtube';
 const SCOPE = YT_SCOPE + ' email'; // email はアカウント選択を省くためだけに使う
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata'; // 同期用（ドライブの MyTube 専用の見えない保存場所だけ）
 const PAGE_TARGET = 15;   // 1回の読み込みで表示したい件数
 const MAX_PAGES = 3;      // 1回の読み込みで叩く検索ページ数の上限（1ページ = 100ユニット）
 const FEED_PER_CHANNEL = 5;
@@ -22,6 +23,7 @@ function load(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
 }
 function save(key, value) {
+  if (typeof noteLocalChange === 'function') noteLocalChange(key, value); // 同期（sync.js）
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 保存できない環境 */ }
 }
 function remove(key) { try { localStorage.removeItem(key); } catch { /* noop */ } }

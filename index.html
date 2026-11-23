@@ -505,6 +505,12 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
       <button type="button" id="logoutBtn" hidden>ログアウト</button>
     </div>
     <p class="hint" id="accountMsg" aria-live="polite"></p>
+    <p class="hint" id="syncStatus" aria-live="polite"></p>
+    <div class="account-actions">
+      <button type="button" id="syncBtn">同期をオンにする</button>
+      <button type="button" id="syncNow" hidden>今すぐ同期</button>
+      <button type="button" id="syncOff" hidden>同期をオフ</button>
+    </div>
 
     <h3>表示</h3>
     <div class="seg" role="radiogroup" aria-label="テーマ">
@@ -799,17 +805,18 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- 機能ごとのファイル。この順番で読み込む（?v= を更新のたびに変えると、スマホに古いファイルが残らない） -->
-<script src="js/core.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/auth-api.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/videos.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/feed.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/pages.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/settings.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/search-tools.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/player.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/gestures.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/comments-chat.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/home.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/main.js?v=2026112332" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/core.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/auth-api.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/videos.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/feed.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/pages.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/settings.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/search-tools.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/player.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/gestures.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/comments-chat.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/home.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/sync.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/main.js?v=2026112333" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>

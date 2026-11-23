@@ -36,6 +36,7 @@ function openSettings() {
   $('accountMsg').textContent = '';
   renderBlocked();
   renderAccount();
+  renderSyncStatus();
   $('quota').textContent = `約 ${quotaUsed().toLocaleString('ja-JP')} / 10,000 ユニット（検索1ページ = 100、新着の更新 ≒ 登録チャンネル数、高評価・保存・登録・コメント投稿 = 各50、それ以外の読み込み = 1）`;
   els.dialog.showModal();
 }

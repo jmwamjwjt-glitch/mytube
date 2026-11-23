@@ -29,14 +29,17 @@ function loadGis() {
   return gisPromise;
 }
 
+// 同期をオンにしている端末では、ドライブ（MyTube 専用の保存場所）の許可も一緒にもらう
+const tokenScope = () => SCOPE + (load('mytube.syncMeta', {}).on ? ' ' + DRIVE_SCOPE : '');
 function initTokenClient() {
   const hint = auth?.email || '';
-  if (tokenClient && tokenClientHint === hint) return;
+  const scope = tokenScope();
+  if (tokenClient && tokenClientHint === hint + '|' + scope) return;
   if (!settings.clientId || !window.google?.accounts?.oauth2) return;
-  tokenClientHint = hint;
+  tokenClientHint = hint + '|' + scope;
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: settings.clientId,
-    scope: SCOPE,
+    scope,
     include_granted_scopes: true,
     login_hint: hint || undefined, // 前回のアカウントを指定して、アカウント選択を省く
     callback: (resp) => {
@@ -47,7 +50,9 @@ function initTokenClient() {
         return;
       }
       auth = Object.assign({}, auth, { token: resp.access_token, exp: Date.now() + (+resp.expires_in || 3600) * 1000 });
+      auth.drive = !!google.accounts.oauth2.hasGrantedAllScopes?.(resp, DRIVE_SCOPE);
       save('mytube.auth', auth);
+      if (typeof scheduleSync === 'function') scheduleSync(1500);
       if (!auth.email) fetchEmail();
       p?.resolve();
     },
