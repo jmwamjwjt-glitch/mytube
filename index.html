@@ -760,12 +760,21 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   <button type="button" onclick="location.reload()">再読み込み</button>
 </div>
 <script>
-  // app.js の読み込み・実行に失敗したときだけ案内を出す
+  // アプリのファイルの読み込み・実行に失敗したときだけ案内を出す
   window.addEventListener('error', function (e) {
-    if (e.filename && e.filename.indexOf('/app.js') !== -1) document.getElementById('bootErr').hidden = false;
+    if (e.filename && e.filename.indexOf('/js/') !== -1) document.getElementById('bootErr').hidden = false;
   });
 </script>
-<!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112325" onerror="document.getElementById('bootErr').hidden=false"></script>
+<!-- 機能ごとのファイル。この順番で読み込む（?v= を更新のたびに変えると、スマホに古いファイルが残らない） -->
+<script src="js/core.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/auth-api.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/videos.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/feed.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/pages.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/settings.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/player.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/comments-chat.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/home.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/main.js?v=2026112326" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
