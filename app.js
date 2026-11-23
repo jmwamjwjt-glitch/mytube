@@ -1106,11 +1106,13 @@ async function loadIntoPlayer(id, start = 0) {
   }
   if (ytPlayer) { try { ytPlayer.destroy(); } catch { /* noop */ } }
   const host = h('div');
-  $('frame').replaceChildren(host, $('pMin'), $('miniCover'));
+  $('frame').replaceChildren(host);
   ytCc = settings.cc;
+  setCcUi(settings.cc);
   ytPlayer = new YT.Player(host, {
     width: '100%', height: '100%', videoId: id,
-    playerVars: { autoplay: 1, playsinline: 1, rel: 0, hl: 'ja', cc_lang_pref: 'ja', cc_load_policy: settings.cc ? 1 : 0, start: Math.floor(start) },
+    // controls: 0 … YouTube 側の操作ボタンを消し、MyTube の操作バー（動画の下）で操作する
+    playerVars: { autoplay: 1, playsinline: 1, controls: 0, fs: 0, rel: 0, iv_load_policy: 3, hl: 'ja', cc_lang_pref: 'ja', cc_load_policy: settings.cc ? 1 : 0, start: Math.floor(start) },
     events: {
       onReady: (e) => { try { e.target.setPlaybackRate(settings.speed); e.target.playVideo(); } catch { /* noop */ } },
       onStateChange: onYtState,
@@ -1130,9 +1132,76 @@ function saveCurrentProgress(ended) {
 }
 function stopProgressTimer() { clearInterval(progressTimer); progressTimer = null; }
 function setMiniPlaying(playing) {
-  $('miniPlay').replaceChildren(icon(playing ? 'pause' : 'play'));
-  $('miniPlay').setAttribute('aria-label', playing ? '一時停止' : '再生');
+  for (const id of ['miniPlay', 'playBtn']) {
+    $(id).replaceChildren(icon(playing ? 'pause' : 'play'));
+    $(id).setAttribute('aria-label', playing ? '一時停止' : '再生');
+  }
 }
+
+// ---------- 操作バー（動画の下） ----------
+let seeking = false;
+function updateTimeUi() {
+  if (!ytPlayer?.getDuration || seeking) return;
+  try {
+    const dur = ytPlayer.getDuration() || 0; const cur = ytPlayer.getCurrentTime() || 0;
+    $('ptime').textContent = `${fmtDuration(Math.floor(cur))} / ${fmtDuration(Math.floor(dur))}`;
+    const p = dur ? (cur / dur) * 1000 : 0;
+    $('seek').value = String(Math.round(p));
+    $('seek').style.setProperty('--p', `${p / 10}%`);
+  } catch { /* noop */ }
+}
+setInterval(() => { if (playerMode === 'full') updateTimeUi(); }, 500);
+$('seek').addEventListener('input', () => {
+  seeking = true;
+  const p = +$('seek').value / 1000;
+  $('seek').style.setProperty('--p', `${p * 100}%`);
+  try { $('ptime').textContent = `${fmtDuration(Math.floor(p * ytPlayer.getDuration()))} / ${fmtDuration(Math.floor(ytPlayer.getDuration()))}`; } catch { /* noop */ }
+});
+$('seek').addEventListener('change', () => {
+  try { ytPlayer.seekTo((+$('seek').value / 1000) * ytPlayer.getDuration(), true); } catch { /* noop */ }
+  seeking = false;
+});
+const skip = (sec) => {
+  try {
+    const dur = ytPlayer.getDuration() || Infinity;
+    ytPlayer.seekTo(Math.min(Math.max(0, ytPlayer.getCurrentTime() + sec), dur - 1), true);
+    updateTimeUi();
+  } catch { /* noop */ }
+};
+$('back10').addEventListener('click', () => skip(-10));
+$('fwd10').addEventListener('click', () => skip(10));
+const togglePlay = () => {
+  try { if (ytPlayer.getPlayerState() === window.YT.PlayerState.PLAYING) ytPlayer.pauseVideo(); else ytPlayer.playVideo(); } catch { /* noop */ }
+};
+$('playBtn').addEventListener('click', togglePlay);
+
+// 字幕のオン・オフ（日本語を優先）
+let ccOn = false;
+function setCcUi(on) { ccOn = on; $('ccBtn').setAttribute('aria-pressed', String(on)); }
+$('ccBtn').addEventListener('click', () => {
+  if (!ytPlayer) return;
+  try {
+    if (ccOn) { ytPlayer.unloadModule('captions'); setCcUi(false); toast('字幕：オフ'); }
+    else {
+      ytPlayer.loadModule('captions');
+      setTimeout(() => { try { ytPlayer.setOption('captions', 'track', { languageCode: 'ja' }); } catch { /* noop */ } }, 500);
+      setCcUi(true); toast('字幕：オン（字幕がない動画では表示されません）');
+    }
+  } catch { toast('この動画では字幕を切り替えられませんでした。'); }
+});
+
+// 全画面（横向き）。操作バーは動画の下に残す
+$('fsBtn').addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) { await document.exitFullscreen(); return; }
+    await $('player').requestFullscreen({ navigationUI: 'hide' });
+    try { await screen.orientation?.lock?.('landscape'); } catch { /* 向きを固定できない端末もある */ }
+  } catch { toast('全画面にできませんでした。'); }
+});
+document.addEventListener('fullscreenchange', () => {
+  $('fsBtn').setAttribute('aria-label', document.fullscreenElement ? '全画面を終了' : '全画面');
+  if (!document.fullscreenElement) { try { screen.orientation?.unlock?.(); } catch { /* noop */ } }
+});
 
 function onYtState(e) {
   const S = window.YT.PlayerState;
@@ -1177,6 +1246,8 @@ function openPlayer(v, list, { keepMode = false } = {}) {
         try { ytPlayer.seekTo(0, true); ytPlayer.playVideo(); } catch { /* noop */ }
         $('pMsg').textContent = '';
       } }));
+    const shownFor = v.id;
+    setTimeout(() => { if (current?.id === shownFor && /前回の続き/.test($('pMsg').textContent)) $('pMsg').textContent = ''; }, 10000);
   }
   loadIntoPlayer(v.id, start).catch((err) => playerReport(err.message, true));
 }
@@ -1196,6 +1267,7 @@ function minimizePlayer() {
   document.body.classList.add('has-mini');
 }
 function closePlayer() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   saveCurrentProgress(false);
   stopProgressTimer();
   playerMode = 'closed';
@@ -1362,6 +1434,7 @@ function clearSleep() {
   clearTimeout(sleep.timer); clearInterval(sleep.tick);
   sleep.timer = sleep.tick = null; sleep.endAt = 0; sleep.endOfVideo = false;
   $('pTimerLabel').textContent = 'タイマー'; $('pTimer').removeAttribute('aria-pressed');
+  $('pTimer').hidden = true; // タイマー中だけ表示する
 }
 function updateTimerLabel() {
   if (sleep.endOfVideo) { $('pTimerLabel').textContent = 'この動画まで'; return; }
@@ -1370,6 +1443,7 @@ function updateTimerLabel() {
 }
 function setSleep(min) {
   clearSleep();
+  $('pTimer').hidden = false;
   $('pTimer').setAttribute('aria-pressed', 'true');
   if (min === 'end') { sleep.endOfVideo = true; updateTimerLabel(); toast('この動画が終わったら停止します。'); return; }
   sleep.endAt = Date.now() + min * 60000;
@@ -1378,18 +1452,20 @@ function setSleep(min) {
   updateTimerLabel();
   toast(`${min}分後に停止します。`);
 }
-$('pTimer').addEventListener('click', () => {
+function openTimerMenu() {
   const on = sleep.timer || sleep.endOfVideo;
   const opts = [15, 30, 45, 60, 90].map((m) => ({ label: `${m}分後に停止`, onclick: () => setSleep(m) }));
   opts.push({ label: 'この動画が終わったら停止', onclick: () => setSleep('end') });
   if (on) opts.push({ label: 'タイマーを解除', onclick: () => { clearSleep(); toast('タイマーを解除しました。'); } });
   openMenu('スリープタイマー', opts, 'スマホの画面を消すと再生も止まります（ブラウザの仕様です）。');
-});
+}
+$('pTimer').addEventListener('click', openTimerMenu);
 
 $('pMore').addEventListener('click', () => {
   const v = current; if (!v) return;
   openMenu('その他', [
     { label: `再生速度（いま ${settings.speed}倍）`, onclick: openSpeedMenu },
+    { label: sleep.timer || sleep.endOfVideo ? `スリープタイマー（${$('pTimerLabel').textContent}）` : 'スリープタイマー', onclick: openTimerMenu },
     { label: 'YouTubeで開く', onclick: () => window.open(`https://www.youtube.com/watch?v=${encodeURIComponent(v.id)}`, '_blank', 'noopener') },
     { label: 'チャンネルを表示', onclick: () => openChannel(v.channelId, decode(v.channel)) },
     { label: 'このチャンネルを除外（今後表示しない）', onclick: () => { blockChannel(v.channelId, decode(v.channel)); closePlayer(); } },
@@ -1402,12 +1478,9 @@ $('pChannel').addEventListener('click', goCurrentChannel);
 $('pChAvBtn').addEventListener('click', goCurrentChannel);
 $('autoNextToggle').addEventListener('change', (e) => { settings.autoNext = e.target.checked; persist(); });
 $('pMin').addEventListener('click', () => minimizePlayer());
-$('miniCover').addEventListener('click', showFullPlayer);
 $('miniTitle').addEventListener('click', showFullPlayer);
 $('miniClose').addEventListener('click', closePlayer);
-$('miniPlay').addEventListener('click', () => {
-  try { if (ytPlayer.getPlayerState() === window.YT.PlayerState.PLAYING) ytPlayer.pauseVideo(); else ytPlayer.playVideo(); } catch { /* noop */ }
-});
+$('miniPlay').addEventListener('click', togglePlay);
 setMiniPlaying(true);
 
 // ---------- コメント（下から出るシート） ----------

@@ -175,8 +175,28 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .player.full { inset: 0; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
 .player .frame { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; flex: none; }
 .player .frame iframe, .player .frame > div { width: 100%; height: 100%; border: 0; display: block; }
-.pmin { position: absolute; left: 6px; top: 6px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; display: grid; place-items: center; z-index: 2; }
-.mini-cover { position: absolute; inset: 0; border: 0; background: transparent; display: none; z-index: 3; }
+/* Own control bar under the video */
+.pctrl { flex: none; background: var(--bg); padding: 0 calc(var(--gut) - 6px) 2px; border-bottom: 1px solid var(--line); }
+#seek { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 18px; margin: 0; background: transparent; --p: 0%; }
+#seek::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: linear-gradient(to right, #ff0033 var(--p), var(--line) var(--p)); }
+#seek::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5px; border-radius: 50%; background: #ff0033; border: 0; }
+#seek::-moz-range-track { height: 3px; background: var(--line); }
+#seek::-moz-range-progress { height: 3px; background: #ff0033; }
+#seek::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: #ff0033; }
+.pctrl-row { display: flex; align-items: center; gap: 2px; height: 40px; }
+.cbtn { position: relative; width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: none; color: var(--fg); display: grid; place-items: center; }
+.cbtn:active { background: var(--chip); }
+.cbtn.big .ic { width: 28px; height: 28px; }
+.cbtn .n10 { position: absolute; font-size: 8px; font-weight: 700; top: 15px; left: 0; right: 0; text-align: center; }
+.cbtn .cc { font-size: 11px; font-weight: 800; border: 2px solid currentColor; border-radius: 4px; padding: 0 3px; line-height: 14px; }
+.cbtn[aria-pressed="true"] .cc { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.ptime { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 6px; white-space: nowrap; }
+/* Fullscreen: video fills the screen, control bar stays below it */
+.player:fullscreen { background: #000; display: flex; flex-direction: column; padding: 0; }
+.player:fullscreen .frame { flex: 1; aspect-ratio: auto; height: auto; }
+.player:fullscreen .info { display: none; }
+.player:fullscreen .pctrl { background: #000; border: 0; --fg: #fff; --line: #444; --chip: #222; --muted: #bbb; color: #fff;
+  padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); }
 .player .info { flex: 1; overflow-y: auto; padding: 12px var(--gut) calc(24px + env(safe-area-inset-bottom, 0px)); }
 .ptitle-btn { display: block; width: 100%; border: 0; background: none; padding: 0; text-align: left; }
 .ptitle-btn h2 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -208,8 +228,12 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .cteaser .ct-head { font-size: 14px; }
 .cteaser .ct-head span { color: var(--muted); margin-left: 6px; }
 .cteaser .ct-body { margin-top: 6px; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.switch { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
-.switch input { width: 34px; height: 20px; accent-color: var(--fg); }
+.switch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.switch input { -webkit-appearance: none; appearance: none; position: relative; width: 36px; height: 20px; margin: 0; border-radius: 10px; background: var(--line); cursor: pointer; transition: background .15s; }
+.switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.switch input:checked { background: var(--fg); }
+.switch input:checked::after { transform: translateX(16px); background: var(--bg); }
+@media (prefers-reduced-motion: reduce) { .switch input, .switch input::after { transition: none; } }
 #upNext .item:not(.compact) .thumb { border-radius: 0; }
 
 /* Comments */
@@ -228,8 +252,7 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .player.mini { left: 0; right: 0; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px)); height: 64px; display: flex; align-items: center; gap: 10px;
   background: var(--surface); border-top: 1px solid var(--line); padding: 0 calc(var(--gut) - 4px) 0 0; }
 .player.mini .frame { width: 114px; height: 64px; aspect-ratio: auto; }
-.player.mini .mini-cover { display: block; }
-.player.mini .info, .player.mini .pmin { display: none; }
+.player.mini .info, .player.mini .pctrl { display: none; }
 .mini-bar { display: none; }
 .player.mini .mini-bar { display: flex; flex: 1; min-width: 0; align-items: center; gap: 2px; }
 .mini-text { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; }
@@ -450,11 +473,28 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
 </dialog>
 
 <div class="player" id="player" hidden>
-  <div class="frame" id="frame">
-    <button class="pmin" id="pMin" type="button" aria-label="小さくする">
-      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
-    </button>
-    <button class="mini-cover" id="miniCover" type="button" aria-label="大きく表示"></button>
+  <div class="frame" id="frame"></div>
+  <!-- 操作ボタンは動画の上に重ねず、動画のすぐ下に置く（YouTube の埋め込みプレーヤーの規約に合わせる） -->
+  <div class="pctrl" id="pCtrl">
+    <input type="range" id="seek" min="0" max="1000" step="1" value="0" aria-label="再生位置">
+    <div class="pctrl-row">
+      <button class="cbtn" id="pMin" type="button" aria-label="小さくする">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+      </button>
+      <button class="cbtn" id="back10" type="button" aria-label="10秒戻す">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/></svg></span><span class="n10">10</span>
+      </button>
+      <button class="cbtn big" id="playBtn" type="button" aria-label="一時停止"></button>
+      <button class="cbtn" id="fwd10" type="button" aria-label="10秒進める">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v4h-4"/></svg></span><span class="n10">10</span>
+      </button>
+      <span class="ptime" id="ptime">0:00 / 0:00</span>
+      <span class="spacer"></span>
+      <button class="cbtn" id="ccBtn" type="button" aria-label="字幕" aria-pressed="false"><span class="cc">CC</span></button>
+      <button class="cbtn" id="fsBtn" type="button" aria-label="全画面">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></span>
+      </button>
+    </div>
   </div>
   <div class="mini-bar">
     <button class="mini-text" id="miniTitle" type="button"><div class="t" id="miniT"></div><div class="sub" id="miniSub"></div></button>
@@ -495,7 +535,7 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
       <button class="pill" id="pSave" type="button">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h12M4 12h12M4 18h8M18 14v8M14 18h8"/></svg></span>保存
       </button>
-      <button class="pill" id="pTimer" type="button">
+      <button class="pill" id="pTimer" type="button" hidden>
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg></span><span id="pTimerLabel">タイマー</span>
       </button>
       <button class="pill" id="pMore" type="button">
@@ -533,6 +573,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112307" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112308" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
