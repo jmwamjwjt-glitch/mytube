@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161c">
+<title>MyTube</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+/* Layout: one column, sticky search bar on top, filter chips under it, results list, bottom sheet for settings, full-screen player overlay */
+:root {
+  --bg: #f6f6f8; --surface: #ffffff; --fg: #17181c; --muted: #646874;
+  --line: #e1e2e8; --accent: #d6213b; --accent-fg: #ffffff; --chip: #ececf1;
+  --font: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1014; --surface: #1a1c22; --fg: #eceef3; --muted: #9a9eab;
+    --line: #2a2d35; --accent: #ff4d63; --accent-fg: #ffffff; --chip: #262932; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+a { color: inherit; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font);
+  padding-bottom: env(safe-area-inset-bottom, 0px); -webkit-tap-highlight-color: transparent; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header { position: sticky; top: 0; z-index: 10; background: var(--bg);
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--line); }
+.bar { display: flex; gap: 8px; align-items: center; }
+.bar form { flex: 1; display: flex; min-width: 0; }
+.bar input { flex: 1; min-width: 0; height: 42px; padding: 0 14px; border: 1px solid var(--line);
+  border-radius: 21px 0 0 21px; background: var(--surface); }
+.bar form button { height: 42px; padding: 0 16px; border: 0; border-radius: 0 21px 21px 0;
+  background: var(--accent); color: var(--accent-fg); font-weight: 700; }
+.icon-btn { width: 42px; height: 42px; flex: none; border: 1px solid var(--line); border-radius: 50%;
+  background: var(--surface); display: grid; place-items: center; }
+.icon-btn svg { width: 20px; height: 20px; }
+.chips { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; padding: 4px 12px; border-radius: 14px; background: var(--chip); font-size: 13px;
+  border: 1px solid transparent; white-space: nowrap; }
+.chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+main { padding: 8px max(12px, env(safe-area-inset-right, 0px)) 24px max(12px, env(safe-area-inset-left, 0px)); }
+.status { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+.status.error { color: var(--accent); }
+.list { display: flex; flex-direction: column; gap: 14px; }
+.item { display: grid; grid-template-columns: 44% 1fr; gap: 10px; align-items: start; }
+.thumb { position: relative; display: block; border: 0; padding: 0; background: var(--chip);
+  border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; width: 100%; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dur { position: absolute; right: 4px; bottom: 4px; background: rgba(0,0,0,.8); color: #fff;
+  font-size: 11px; padding: 0 4px; border-radius: 3px; font-variant-numeric: tabular-nums; }
+.meta { min-width: 0; }
+.title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; display: -webkit-box;
+  -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; background: none; border: 0;
+  padding: 0; text-align: left; }
+.sub { color: var(--muted); font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
+.block { margin-top: 4px; background: none; border: 0; padding: 2px 0; color: var(--muted); font-size: 12px; text-decoration: underline; }
+.more { margin: 16px auto 0; display: block; padding: 10px 22px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); }
+.empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+
+/* Settings sheet */
+dialog { border: 0; padding: 0; background: transparent; max-width: 100%; max-height: 100%; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto;
+  background: var(--surface); color: var(--fg); border-radius: 16px 16px 0 0;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet h2 { margin: 0 0 12px; font-size: 17px; }
+.sheet h3 { margin: 18px 0 6px; font-size: 14px; color: var(--muted); }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.field input, .field select { height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.check { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.hint { font-size: 12px; color: var(--muted); }
+.blocked { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.blocked li { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg); border-radius: 8px; }
+.blocked button { border: 0; background: none; color: var(--accent); }
+.sheet-actions { display: flex; gap: 8px; margin-top: 16px; }
+.sheet-actions button { flex: 1; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
+.sheet-actions .primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
+
+/* Player */
+.player { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px); }
+.player .frame { width: 100%; aspect-ratio: 16/9; background: #000; }
+.player iframe { width: 100%; height: 100%; border: 0; display: block; }
+.player .info { padding: 12px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); overflow-y: auto; }
+.player h2 { margin: 0 0 6px; font-size: 16px; }
+.player .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.player .actions a, .player .actions button { padding: 8px 14px; border-radius: 18px; background: var(--chip); border: 0; text-decoration: none; font-size: 13px; }
+.player .close { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 22px; }
+@media (min-width: 720px) { main, header .inner { max-width: 820px; margin: 0 auto; } .item { grid-template-columns: 240px 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="inner">
+    <div class="bar">
+      <form id="searchForm" role="search">
+        <input id="q" type="search" placeholder="検索" enterkeyhint="search" autocomplete="off" aria-label="検索キーワード">
+        <button type="submit">検索</button>
+      </form>
+      <button class="icon-btn" id="openSettings" aria-label="設定">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+      </button>
+    </div>
+    <div class="chips" id="chips" aria-label="クイックフィルタ"></div>
+  </div>
+</header>
+
+<main>
+  <div class="status" id="status" aria-live="polite"></div>
+  <div class="list" id="list"></div>
+  <button class="more" id="more" hidden>さらに読み込む</button>
+  <div class="empty" id="empty">キーワードを入れて検索してください。<br>右上の設定ボタンで、APIキーと絞り込み条件を設定できます。</div>
+</main>
+
+<dialog id="settings">
+  <div class="sheet">
+    <h2>設定</h2>
+    <div class="field">
+      <label for="apiKey">YouTube Data API キー</label>
+      <input id="apiKey" type="password" autocomplete="off" placeholder="AIza...">
+      <span class="hint">キーはこのスマホのブラウザ内だけに保存されます。</span>
+    </div>
+
+    <h3>検索の条件</h3>
+    <div class="field">
+      <label for="minMin">最短の長さ（分）</label>
+      <input id="minMin" type="number" min="0" step="1" inputmode="numeric">
+      <span class="hint">0 にすると長さで絞り込みません。1分以上にするとショートが消えます。</span>
+    </div>
+    <div class="field">
+      <label for="maxMin">最長の長さ（分）</label>
+      <input id="maxMin" type="number" min="0" step="1" inputmode="numeric">
+      <span class="hint">0 なら上限なし。</span>
+    </div>
+    <div class="field">
+      <label for="order">並び順</label>
+      <select id="order">
+        <option value="relevance">関連度</option>
+        <option value="date">新しい順</option>
+        <option value="viewCount">再生回数順</option>
+        <option value="rating">評価順</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="period">アップロード日</label>
+      <select id="period">
+        <option value="">指定なし</option>
+        <option value="1">24時間以内</option>
+        <option value="7">1週間以内</option>
+        <option value="30">1か月以内</option>
+        <option value="365">1年以内</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="minViews">最低再生回数</label>
+      <input id="minViews" type="number" min="0" step="100" inputmode="numeric">
+    </div>
+    <label class="check"><input type="checkbox" id="jaOnly"> 日本語の動画だけ</label>
+    <label class="check"><input type="checkbox" id="noLive"> ライブ配信を除外</label>
+
+    <h3>除外しているチャンネル</h3>
+    <ul class="blocked" id="blockedList"></ul>
+    <p class="hint" id="blockedEmpty">まだありません。検索結果の「このチャンネルを除外」から追加できます。</p>
+
+    <h3>今日のAPI使用量</h3>
+    <p class="hint" id="quota"></p>
+
+    <div class="sheet-actions">
+      <button type="button" id="closeSettings">閉じる</button>
+      <button type="button" class="primary" id="saveSettings">保存して再検索</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="player" id="player" hidden>
+  <div class="frame" id="frame"></div>
+  <div class="info">
+    <h2 id="pTitle"></h2>
+    <div class="sub" id="pSub"></div>
+    <div class="actions">
+      <a id="pOpen" href="#" target="_blank" rel="noopener">YouTubeで開く</a>
+      <button type="button" id="pBlock">このチャンネルを除外</button>
+    </div>
+  </div>
+  <button class="close" id="pClose" aria-label="閉じる">✕</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
