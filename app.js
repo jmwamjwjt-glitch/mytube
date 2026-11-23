@@ -257,7 +257,7 @@ async function withLogin(fn) {
 
 function logout() {
   if (auth?.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(auth.token, () => {});
-  auth = null; remove('mytube.auth'); remove('mytube.feed');
+  auth = null; remove('mytube.auth'); remove('mytube.feed'); remove('mytube.subs');
   tokenClient = null;
   els.feed.list.replaceChildren();
   renderAccount();
@@ -393,17 +393,13 @@ function thumbImg(v, kind) {
 
 // 動画IDの順番を保ったまま詳細を取得
 async function fetchVideoItems(ids, opts) {
-  const out = [];
-  for (const part of chunk(ids, 50)) {
+  // 50本ずつの取得を同時に行い、元の順番に並べ直す
+  const parts = await Promise.all(chunk(ids, 50).map(async (part) => {
     const det = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, id: part.join(',') }, 1);
     const byId = new Map((det.items || []).map((v) => [v.id, v]));
-    for (const id of part) {
-      const v = byId.get(id);
-      const item = v && toItem(v, opts);
-      if (item) out.push(item);
-    }
-  }
-  return out;
+    return part.map((id) => { const v = byId.get(id); return v && toItem(v, opts); }).filter(Boolean);
+  }));
+  return parts.flat();
 }
 
 // ---------- チャンネルアイコン（まとめて取得してスマホに保存） ----------
@@ -604,8 +600,18 @@ async function pool(items, limit, fn) {
   return out;
 }
 
-async function fetchFeed() {
-  const channels = []; // { id, title, thumb }
+// 速く更新するための工夫
+// ・通信を最大20本同時に行う
+// ・登録チャンネルの一覧は前回のものですぐに始め、裏で最新の一覧も取り直して差分だけ追加で読む
+// ・1週間以上投稿していないチャンネルは、6時間に1回だけ確認する
+// ・前回読み込んだ動画の詳細は使い回す（投稿から1日以内の動画だけ、再生回数を取り直す）
+const FEED_CONCURRENCY = 20;
+const DORMANT_DAYS = 7;
+const DORMANT_RECHECK = 6 * 3600 * 1000;
+const SUBS_TTL = 60 * 60 * 1000;
+
+async function fetchSubscriptionList() {
+  const channels = [];
   let pageToken = '';
   do {
     const res = await apiAuth('GET', 'subscriptions', { part: 'snippet', mine: 'true', maxResults: 50, pageToken }, null, 1);
@@ -613,28 +619,70 @@ async function fetchFeed() {
       channels.push({ id: s.snippet.resourceId.channelId, title: s.snippet.title, thumb: s.snippet.thumbnails?.default?.url || '' });
     }
     pageToken = res.nextPageToken || '';
-    setMsg(els.feed.status, `登録チャンネルを読み込み中…（${channels.length}件）`);
   } while (pageToken);
-  if (!channels.length) return { items: [], channels: 0, channelList: [] };
+  save('mytube.subs', { at: Date.now(), channels });
   for (const c of channels) if (c.thumb) avatarCache[c.id] = c.thumb;
   save('mytube.avatars', avatarCache);
+  return channels;
+}
+// おすすめ作りでも使う（1時間以内なら保存済みの一覧を使う）
+async function getSubscriptionIds() {
+  const c = load('mytube.subs', null);
+  if (c && Date.now() - c.at < SUBS_TTL) return new Set(c.channels.map((x) => x.id));
+  return new Set((await fetchSubscriptionList()).map((x) => x.id));
+}
 
-  let done = 0;
-  const lists = await pool(channels, 6, async (c) => {
+// 長さ・ライブの条件をもう一度当てる（使い回した動画にも、今の設定を反映するため）
+function passesLength(v) {
+  if (settings.noLive && v.live && v.live !== 'none') return false;
+  if (v.live && v.live !== 'none') return true;
+  if (settings.minMin > 0 && (v.sec || 0) < settings.minMin * 60) return false;
+  if (settings.maxMin > 0 && (v.sec || 0) > settings.maxMin * 60) return false;
+  return true;
+}
+
+async function fetchFeed(prev) {
+  const cachedSubs = load('mytube.subs', null)?.channels;
+  const subsPromise = fetchSubscriptionList();
+  subsPromise.catch(() => {});
+  let channels = cachedSubs?.length ? cachedSubs : await subsPromise;
+  if (!channels.length) return { items: [], channels: 0, channelList: [], chState: {} };
+
+  const prevState = prev?.chState || {};
+  const chState = {};
+  let done = 0; let total = channels.length;
+  const fetchChannel = async (c) => {
+    const p = prevState[c.id];
+    const dormant = p && (!p.latest || Date.now() - new Date(p.latest).getTime() > DORMANT_DAYS * 86400000) && Date.now() - p.checked < DORMANT_RECHECK;
+    if (dormant) { chState[c.id] = p; return; }
     const res = await apiAuth('GET', 'playlistItems', { part: 'contentDetails', playlistId: 'UU' + c.id.slice(2), maxResults: FEED_PER_CHANNEL }, null, 1);
-    done++;
-    if (done % 10 === 0) setMsg(els.feed.status, `新着を集めています…（${done}/${channels.length}チャンネル）`);
-    return (res.items || []).map((it) => ({ id: it.contentDetails.videoId, at: it.contentDetails.videoPublishedAt || '' }));
-  });
-  // チャンネルを「最近投稿した順」に並べる（上の丸いアイコンの列用）
-  const channelList = channels.map((c, i) => ({ ...c, latest: (lists[i] || []).reduce((m, x) => (x.at > m ? x.at : m), '') }))
+    const list = (res.items || []).map((it) => ({ id: it.contentDetails.videoId, at: it.contentDetails.videoPublishedAt || '' }));
+    chState[c.id] = { latest: list.reduce((m, x) => (x.at > m ? x.at : m), ''), checked: Date.now(), list };
+  };
+  const tick = () => { done++; if (done % 20 === 0) setMsg(els.feed.status, `新着を集めています…（${done}/${total}チャンネル）`); };
+  await pool(channels, FEED_CONCURRENCY, async (c) => { await fetchChannel(c); tick(); });
+
+  // 最新の登録一覧と照らし合わせる（新しく登録したチャンネルだけ追加で読む・解除したチャンネルは外す）
+  try {
+    const fresh = await subsPromise;
+    const added = fresh.filter((c) => !chState[c.id]);
+    if (added.length) { total += added.length; await pool(added, FEED_CONCURRENCY, async (c) => { await fetchChannel(c); tick(); }); }
+    channels = fresh;
+  } catch { /* 取り直せなければ前回の一覧のまま */ }
+
+  const channelList = channels.map((c) => ({ ...c, latest: chState[c.id]?.latest || '' }))
     .sort((a, b) => (b.latest > a.latest ? 1 : -1));
   const seen = new Set();
-  const recent = lists.flat().filter((x) => x && x.id && !seen.has(x.id) && seen.add(x.id))
+  const recent = channels.flatMap((c) => chState[c.id]?.list || []).filter((x) => x.id && !seen.has(x.id) && seen.add(x.id))
     .sort((a, b) => (b.at > a.at ? 1 : -1)).slice(0, FEED_MAX);
-  const items = await fetchVideoItems(recent.map((x) => x.id), {});
+
+  const prevItems = new Map((prev?.items || []).map((v) => [v.id, v]));
+  const need = new Set(recent.filter((x) => !prevItems.has(x.id) || Date.now() - new Date(x.at).getTime() < 86400000).map((x) => x.id));
+  const fetched = new Map((await fetchVideoItems([...need], {})).map((v) => [v.id, v]));
+  const items = recent.map((x) => (need.has(x.id) ? fetched.get(x.id) : prevItems.get(x.id)))
+    .filter((v) => v && passesLength(v));
   items.sort((a, b) => (b.published > a.published ? 1 : -1));
-  return { items, channels: channels.length, channelList };
+  return { items, channels: channels.length, channelList, chState };
 }
 
 function showFeedEmpty() {
@@ -722,8 +770,8 @@ async function loadFeed(force, { quiet = false } = {}) {
   setMsg(els.feed.status, '新着を読み込んでいます…');
   try {
     await ensureToken();
-    const res = await fetchFeed();
-    const fresh = { at: Date.now(), items: res.items, channels: res.channels, channelList: res.channelList };
+    const res = await fetchFeed(cache);
+    const fresh = { at: Date.now(), items: res.items, channels: res.channels, channelList: res.channelList, chState: res.chState };
     save('mytube.feed', fresh);
     renderFeed(fresh);
   } catch (e) {
@@ -1018,7 +1066,7 @@ function subscribeButton(channelId) {
           set(r.id); toast('チャンネル登録しました。');
         } catch (e) { if (e.reason === 'subscriptionDuplicate') { await check(); toast('すでに登録済みです。'); } else throw e; }
       }
-      remove('mytube.feed'); // 新着一覧を作り直す
+      remove('mytube.feed'); remove('mytube.subs'); // 新着一覧と登録一覧を作り直す
     }).catch((e) => toast(e.message)).finally(() => { busy = false; });
   });
   return btn;
@@ -1899,115 +1947,117 @@ function buildSignals(liked) {
 }
 
 async function buildRecommendations(progress) {
-  let liked = []; const subs = new Set();
-  if (isLoggedIn() && tokenValid()) { // ここではログイン画面は出さない（期限切れなら履歴だけで作る）
-    try {
-      progress('高評価した動画を確認しています…');
-      const r = await apiAuth('GET', 'videos', { part: 'snippet', myRating: 'like', maxResults: 50 }, null, 1);
-      liked = (r.items || []).map((v) => ({ channelId: v.snippet.channelId, channel: v.snippet.channelTitle,
-        title: v.snippet.title, cat: v.snippet.categoryId, tags: v.snippet.tags || [] }));
-    } catch { /* 高評価なしで続ける */ }
-    try {
-      let pt = '';
-      do {
-        const r = await apiAuth('GET', 'subscriptions', { part: 'snippet', mine: 'true', maxResults: 50, pageToken: pt }, null, 1);
-        for (const s of r.items || []) subs.add(s.snippet.resourceId.channelId);
-        pt = r.nextPageToken || '';
-      } while (pt);
-    } catch { /* 登録なしで続ける */ }
+  // 高評価と登録チャンネルを同時に読む（ここではログイン画面は出さない。期限切れなら履歴だけで作る）
+  let liked = []; let subs = new Set();
+  if (isLoggedIn() && tokenValid()) {
+    progress('あなたの好みを確認しています…');
+    const [lk, sb] = await Promise.all([
+      apiAuth('GET', 'videos', { part: 'snippet', myRating: 'like', maxResults: 50 }, null, 1).catch(() => null),
+      getSubscriptionIds().catch(() => null),
+    ]);
+    liked = (lk?.items || []).map((v) => ({ channelId: v.snippet.channelId, channel: v.snippet.channelTitle,
+      title: v.snippet.title, cat: v.snippet.categoryId, tags: v.snippet.tags || [] }));
+    if (sb) subs = sb;
   }
   const sig = buildSignals(liked);
-  const used = new Set(); const sections = [];
+  const used = new Set();
   const keep = (items, n = 20) => items.filter((v) => !isShort(v) && !used.has(v.id) && !hiddenVideos.has(v.id) && !isWatched(v.id))
     .slice(0, n).map((v) => { used.add(v.id); return v; });
+  const quotaOut = (e) => { if (/上限/.test(e?.message || '')) throw e; return null; };
+  const searchParams = (q, extra = {}) => {
+    const p = { part: 'snippet', type: 'video', q, ...extra };
+    if (settings.jaOnly) { p.relevanceLanguage = 'ja'; p.regionCode = 'JP'; }
+    if (settings.minMin >= 20) p.videoDuration = 'long';
+    return p;
+  };
 
-  // 1. よく見るのに未登録のチャンネルの新着
+  // それぞれの欄の材料を「同時に」集める（並び順は最後にそろえる）
   const chans = topOf(sig.ch).filter(([id, s]) => s >= 1.5 && !subs.has(id) && !isBlocked(id)).slice(0, 8);
-  if (chans.length) {
-    progress('よく見るチャンネルの新着を集めています…');
-    const lists = await pool(chans, 4, async ([id]) =>
-      (await api('playlistItems', { part: 'contentDetails', playlistId: 'UU' + id.slice(2), maxResults: 4 }, 1)).items || []);
-    const ids = lists.filter(Boolean).flat().map((it) => it.contentDetails.videoId);
-    const items = (await fetchVideoItems(ids, {})).sort((a, b) => (b.published > a.published ? 1 : -1));
-    const k = keep(items);
-    if (k.length) sections.push({ title: 'よく見るチャンネルの新着', items: k,
-      reason: chans.slice(0, 3).map(([id]) => sig.chNames.get(id)).filter(Boolean).join('、') + ' など、よく見ているチャンネル' });
-  }
-
-  // 2. ワードで検索（1語100ユニット）。自分で追加したワード＋履歴から自動で選んだワード
   const hiddenKw = new Set(settings.hiddenKeywords || []);
   const custom = (settings.customKeywords || []).filter((w) => !hiddenKw.has(w));
   const autoCands = topOf(sig.kw).filter(([w, s]) => s >= 1 && !hiddenKw.has(w) && !sig.nameWords.has(w) && !custom.includes(w));
   const autoKws = autoCands.filter(([, s]) => s >= 1.5).slice(0, settings.autoKwCount ?? 2).map(([w]) => w);
   const kwList = [...custom.map((w) => ({ w, mine: true })), ...autoKws.map((w) => ({ w, mine: false }))];
-  for (const { w, mine } of kwList) {
-    try {
-      progress(`「${w}」の動画を探しています…`);
-      const params = { part: 'snippet', type: 'video', maxResults: 25, q: w };
-      if (settings.jaOnly) { params.relevanceLanguage = 'ja'; params.regionCode = 'JP'; }
-      if (settings.minMin >= 20) params.videoDuration = 'long';
-      const r = await api('search', params, 100);
-      const ids = (r.items || []).filter((it) => it.id?.videoId && !isBlocked(it.snippet?.channelId)).map((it) => it.id.videoId);
-      const k = keep(await fetchVideoItems(ids, { lang: true }));
-      if (k.length) sections.push({ title: `「${w}」のおすすめ`, keyword: w, custom: mine, items: k,
-        reason: mine ? `あなたが追加したワード「${w}」` : `「${w}」が入った動画をよく見ているため` });
-    } catch (e) { if (/上限/.test(e.message)) throw e; /* そのワードだけ飛ばす */ }
-  }
   const kwCandidates = autoCands.map(([w]) => w).filter((w) => !autoKws.includes(w)).slice(0, 12);
-
-  // 3. 掘り出し物：好きな話題の動画のうち、登録者が少ないのに再生や評価が伸びているチャンネルの動画
   const gemWords = [...new Set([...custom, ...autoKws, ...autoCands.map(([w]) => w)])].slice(0, 4);
-  if (gemWords.length) {
-    try {
-      progress('掘り出し物を探しています…');
-      const seenCh = new Set(watchHistory.map((e) => e.channelId));
-      const params = { part: 'snippet', type: 'video', maxResults: 50, q: gemWords.join('|'), // | は「どれか」
-        publishedAfter: new Date(Date.now() - 7 * 86400000).toISOString() }; // 過去1週間の動画
-      if (settings.jaOnly) { params.relevanceLanguage = 'ja'; params.regionCode = 'JP'; }
-      if (settings.minMin >= 20) params.videoDuration = 'long';
-      const r = await api('search', params, 100);
-      const ids = (r.items || []).filter((it) => it.id?.videoId && !subs.has(it.snippet.channelId) && !seenCh.has(it.snippet.channelId) && !isBlocked(it.snippet.channelId))
-        .map((it) => it.id.videoId);
-      if (ids.length) {
-        const det = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, id: ids.join(',') }, 1);
-        const chIds = [...new Set((det.items || []).map((v) => v.snippet.channelId))];
-        const chs = await api('channels', { part: 'statistics', id: chIds.join(','), maxResults: 50 }, 1);
-        const subsOf = new Map((chs.items || []).map((c) => [c.id, c.statistics?.hiddenSubscriberCount ? null : +c.statistics?.subscriberCount]));
-        const gems = [];
-        for (const v of det.items || []) {
-          const item = toItem(v, { lang: true });
-          if (!item || isShort(item)) continue;
-          const views = +v.statistics?.viewCount || 0; const likes = +v.statistics?.likeCount || 0;
-          const subsN = subsOf.get(v.snippet.channelId);
-          if (subsN == null || subsN > 50000) continue;      // 登録者5万人以下の小さめのチャンネル
-          if (views < 300) continue;                          // ある程度は見られている（1週間なので低め）
-          const likeRate = likes / views;
-          if (likeRate < 0.02) continue;                      // 高評価率2%以上
-          const reach = Math.min(views / Math.max(subsN, 100), 20); // 登録者数の何倍見られたか
-          if (reach < 0.5) continue;
-          item.gemScore = likeRate * Math.log10(views) * Math.sqrt(reach);
-          gems.push(item);
-        }
-        gems.sort((a, b) => b.gemScore - a.gemScore);
-        const perCh = new Map();
-        const picked = gems.filter((g) => { const n = perCh.get(g.channelId) || 0; perCh.set(g.channelId, n + 1); return n < 2; }); // 1チャンネル2本まで
-        const k = keep(picked);
-        if (k.length) sections.push({ title: '掘り出し物', items: k, gem: true,
-          reason: `「${gemWords.join('」「')}」の動画から、登録者が少ないのに評価が高いチャンネルを選んでいます（まだ見たことのないチャンネルだけ）` });
-      }
-    } catch (e) { if (/上限/.test(e.message)) throw e; }
-  }
+  const cats = topOf(sig.cat).filter(([c, s]) => s >= 1 && c !== '22').slice(0, 3);
+  progress('おすすめを集めています…');
+
+  // 1. よく見るのに未登録のチャンネルの新着
+  const chanTask = chans.length ? (async () => {
+    const lists = await pool(chans, 8, async ([id]) =>
+      (await api('playlistItems', { part: 'contentDetails', playlistId: 'UU' + id.slice(2), maxResults: 4 }, 1)).items || []);
+    const ids = lists.filter(Boolean).flat().map((it) => it.contentDetails.videoId);
+    return (await fetchVideoItems(ids, {})).sort((a, b) => (b.published > a.published ? 1 : -1));
+  })().catch(quotaOut) : null;
+
+  // 2. ワードで検索（1語100ユニット）
+  const kwTasks = kwList.map(({ w }) => (async () => {
+    const r = await api('search', searchParams(w, { maxResults: 25 }), 100);
+    const ids = (r.items || []).filter((it) => it.id?.videoId && !isBlocked(it.snippet?.channelId)).map((it) => it.id.videoId);
+    return fetchVideoItems(ids, { lang: true });
+  })().catch(quotaOut));
+
+  // 3. 掘り出し物：登録者が少ないのに再生や評価が伸びている、まだ見たことのないチャンネルの過去1週間の動画
+  const gemTask = gemWords.length ? (async () => {
+    const seenCh = new Set(watchHistory.map((e) => e.channelId));
+    const r = await api('search', searchParams(gemWords.join('|'), { maxResults: 50, // | は「どれか」
+      publishedAfter: new Date(Date.now() - 7 * 86400000).toISOString() }), 100);
+    const ids = (r.items || []).filter((it) => it.id?.videoId && !subs.has(it.snippet.channelId) && !seenCh.has(it.snippet.channelId) && !isBlocked(it.snippet.channelId))
+      .map((it) => it.id.videoId);
+    if (!ids.length) return [];
+    const det = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, id: ids.join(',') }, 1);
+    const chIds = [...new Set((det.items || []).map((v) => v.snippet.channelId))];
+    const chs = await api('channels', { part: 'statistics', id: chIds.join(','), maxResults: 50 }, 1);
+    const subsOf = new Map((chs.items || []).map((c) => [c.id, c.statistics?.hiddenSubscriberCount ? null : +c.statistics?.subscriberCount]));
+    const gems = [];
+    for (const v of det.items || []) {
+      const item = toItem(v, { lang: true });
+      if (!item || isShort(item)) continue;
+      const views = +v.statistics?.viewCount || 0; const likes = +v.statistics?.likeCount || 0;
+      const subsN = subsOf.get(v.snippet.channelId);
+      if (subsN == null || subsN > 50000) continue;      // 登録者5万人以下の小さめのチャンネル
+      if (views < 300) continue;                          // ある程度は見られている（1週間なので低め）
+      const likeRate = likes / views;
+      if (likeRate < 0.02) continue;                      // 高評価率2%以上
+      const reach = Math.min(views / Math.max(subsN, 100), 20); // 登録者数の何倍見られたか
+      if (reach < 0.5) continue;
+      item.gemScore = likeRate * Math.log10(views) * Math.sqrt(reach);
+      gems.push(item);
+    }
+    gems.sort((a, b) => b.gemScore - a.gemScore);
+    const perCh = new Map();
+    return gems.filter((g) => { const n = perCh.get(g.channelId) || 0; perCh.set(g.channelId, n + 1); return n < 2; }); // 1チャンネル2本まで
+  })().catch(quotaOut) : null;
 
   // 4. よく見るジャンルの人気動画（「ブログ・日常」は既定のジャンルで好みを表さないので使わない）
-  const cats = topOf(sig.cat).filter(([c, s]) => s >= 1 && c !== '22').slice(0, 3);
-  for (const [c] of cats) {
-    try {
-      progress(`${CATEGORY_NAMES[c] || 'ジャンル'}の人気動画を集めています…`);
-      const r = await api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240, chart: 'mostPopular', regionCode: 'JP', videoCategoryId: c, maxResults: 25 }, 1);
-      const k = keep((r.items || []).map((v) => toItem(v, {})).filter(Boolean));
-      if (k.length) sections.push({ title: `${CATEGORY_NAMES[c] || '好きなジャンル'}の人気動画`, items: k, reason: `${CATEGORY_NAMES[c] || 'このジャンル'}の動画をよく見ているため` });
-    } catch { /* このジャンルは人気一覧がない */ }
+  const catTasks = cats.map(([c]) => api('videos', { part: 'snippet,contentDetails,statistics,liveStreamingDetails,player', maxWidth: 240,
+    chart: 'mostPopular', regionCode: 'JP', videoCategoryId: c, maxResults: 25 }, 1)
+    .then((r) => (r.items || []).map((v) => toItem(v, {})).filter(Boolean)).catch(() => null));
+
+  const [chanItems, kwItems, gemItems, catItems] = await Promise.all([chanTask, Promise.all(kwTasks), gemTask, Promise.all(catTasks)]);
+
+  // いつもと同じ順番で欄を組み立てる（同じ動画が2つの欄に出ないように）
+  const sections = [];
+  if (chanItems) {
+    const k = keep(chanItems);
+    if (k.length) sections.push({ title: 'よく見るチャンネルの新着', items: k,
+      reason: chans.slice(0, 3).map(([id]) => sig.chNames.get(id)).filter(Boolean).join('、') + ' など、よく見ているチャンネル' });
   }
+  kwList.forEach(({ w, mine }, i) => {
+    const k = kwItems[i] ? keep(kwItems[i]) : [];
+    if (k.length) sections.push({ title: `「${w}」のおすすめ`, keyword: w, custom: mine, items: k,
+      reason: mine ? `あなたが追加したワード「${w}」` : `「${w}」が入った動画をよく見ているため` });
+  });
+  if (gemItems) {
+    const k = keep(gemItems);
+    if (k.length) sections.push({ title: '掘り出し物', items: k, gem: true,
+      reason: `「${gemWords.join('」「')}」の動画から、登録者が少ないのに評価が高いチャンネルを選んでいます（まだ見たことのないチャンネルだけ）` });
+  }
+  cats.forEach(([c], i) => {
+    const k = catItems[i] ? keep(catItems[i]) : [];
+    if (k.length) sections.push({ title: `${CATEGORY_NAMES[c] || '好きなジャンル'}の人気動画`, items: k, reason: `${CATEGORY_NAMES[c] || 'このジャンル'}の動画をよく見ているため` });
+  });
 
   // 材料が足りないときは日本の人気動画
   if (!sections.length) {
