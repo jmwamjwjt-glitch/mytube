@@ -215,6 +215,12 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .player .frame { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; flex: none; }
 .player.full[data-short="1"] .frame { aspect-ratio: auto; height: min(64vh, calc(100vw * 16 / 9)); }
 .player .frame iframe, .player .frame > div { width: 100%; height: 100%; border: 0; display: block; }
+/* 縦長の動画を縦向きのまま全画面に：動画を画面の幅いっぱいにし、操作バーはその下に置く（動画の上には重ねない） */
+.player.full.vfs { background: #000; justify-content: center; padding-bottom: env(safe-area-inset-bottom, 0px);
+  --bg: #000; --fg: #fff; --line: #000; --chip: #222; --muted: #bbb; color: #fff; }
+.player.full.vfs .frame { aspect-ratio: 9/16 !important; height: auto !important; align-self: center;
+  width: min(100vw, calc((100dvh - 130px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 9 / 16)); }
+.player.full.vfs .info, .player.full.vfs .chatpanel { display: none !important; }
 /* Own control bar under the video */
 .pctrl { flex: none; background: var(--bg); padding: 0 calc(var(--gut) - 6px) 2px; border-bottom: 1px solid var(--line); }
 #seek { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 18px; margin: 0; background: transparent; --p: 0%; }
@@ -792,17 +798,17 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- 機能ごとのファイル。この順番で読み込む（?v= を更新のたびに変えると、スマホに古いファイルが残らない） -->
-<script src="js/core.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/auth-api.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/videos.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/feed.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/pages.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/settings.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/search-tools.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/player.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/gestures.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/comments-chat.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/home.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/main.js?v=2026112330" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/core.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/auth-api.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/videos.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/feed.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/pages.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/settings.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/search-tools.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/player.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/gestures.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/comments-chat.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/home.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/main.js?v=2026112331" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>

@@ -28,14 +28,13 @@ function loadYouTubeApi() {
   return ytApiPromise;
 }
 
-// fresh: true … プレーヤーを作り直す（一時停止後の暗い表示を消すため）。字幕の状態はそのまま引き継ぐ
-async function loadIntoPlayer(id, start = 0, { fresh = false } = {}) {
+async function loadIntoPlayer(id, start = 0) {
   await loadYouTubeApi();
-  if (!fresh && ytPlayer && ytCc === settings.cc && typeof ytPlayer.loadVideoById === 'function') {
+  if (ytPlayer && ytCc === settings.cc && typeof ytPlayer.loadVideoById === 'function') {
     ytPlayer.loadVideoById({ videoId: id, startSeconds: start });
     return;
   }
-  const keepCc = fresh && ytPlayer ? ccOn : settings.cc;
+  const keepCc = settings.cc;
   if (ytPlayer) { try { ytPlayer.destroy(); } catch { /* noop */ } }
   const host = h('div');
   $('frame').replaceChildren(host);
@@ -157,18 +156,11 @@ const skip = (sec) => {
 };
 $('back10').addEventListener('click', () => skip(-10));
 $('fwd10').addEventListener('click', () => skip(10));
-// 一時停止すると YouTube が動画の上に暗い表示（タイトル・共有・その他の動画など）を出す。
-// スマホでは動画に触れないと消えない（縦向きでは動画へのタップを止めているので消えない）ため、
-// 一時停止から再開するときは同じ位置で読み込み直して、表示をきれいにする
+// 一時停止後に YouTube が出す暗い表示は、動画を1回タップすると消える
 const togglePlay = () => {
   try {
     const S = window.YT.PlayerState; const st = ytPlayer.getPlayerState();
     if (st === S.PLAYING || st === S.BUFFERING) { ytPlayer.pauseVideo(); return; }
-    if (st === S.PAUSED && current) {
-      const t = ytPlayer.getCurrentTime();
-      loadIntoPlayer(current.id, t, { fresh: true }).catch(() => {});
-      return;
-    }
     ytPlayer.playVideo();
   } catch { /* noop */ }
 };
@@ -209,6 +201,7 @@ const isFs = () => $('player').classList.contains('fs') || !!document.fullscreen
 function updateFsMode() {
   const on = playerMode === 'full' && (landscapeMq.matches || !!document.fullscreenElement);
   $('player').classList.toggle('fs', on);
+  if (on) $('player').classList.remove('vfs'); // 横向きにしたら、いつもの全画面に切り替える
   $('fsBtn').setAttribute('aria-label', on ? '全画面を終了' : '全画面');
   if (on) bumpFsBar(); else { clearTimeout(fsHideTimer); $('pCtrl').classList.remove('hide'); }
 }
@@ -242,8 +235,16 @@ async function leaveFullscreen({ quiet = false } = {}) {
   }
   orientLocked = false;
 }
+// 縦長の動画（ショートなど）は、縦向きのまま画面いっぱいに（操作バーは動画の下。動画の上には重ねない）
+const isVfs = () => $('player').classList.contains('vfs');
+function setVfs(on) {
+  $('player').classList.toggle('vfs', on);
+  $('fsBtn').setAttribute('aria-label', on || isFs() ? '全画面を終了' : '全画面');
+}
 $('fsBtn').addEventListener('click', async () => {
+  if (isVfs()) { setVfs(false); return; } // 縦の全画面を終了
   if (isFs()) { await leaveFullscreen(); return; } // 終了
+  if ($('player').dataset.short === '1' && !landscapeMq.matches) { setVfs(true); return; }
   if (settings.fsChrome) { // Chrome の全画面（画面いっぱい・案内が出る）
     try {
       await $('player').requestFullscreen({ navigationUI: 'hide' });
@@ -291,6 +292,7 @@ function openPlayer(v, list, { keepMode = false } = {}) {
   if (!keepMode || playerMode === 'closed') showFullPlayer();
   $('player').hidden = false;
   $('player').dataset.short = isShort(v) ? '1' : ''; // ショートは縦長に表示
+  if (!isShort(v)) $('player').classList.remove('vfs'); // 横長の動画になったら縦の全画面は終える
   if (playerMode === 'mini') placeMini(); // 小窓のまま次の動画へ進んだとき、縦長／横長に合わせ直す
   renderPlayerInfo(v);
   const e = histGet(v.id);
@@ -328,6 +330,7 @@ function minimizePlayer() {
 }
 function closePlayer() {
   if (isFs() || orientLocked) leaveFullscreen({ quiet: true });
+  $('player').classList.remove('vfs');
   saveCurrentProgress(false);
   stopProgressTimer();
   playerMode = 'closed';
