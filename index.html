@@ -6,6 +6,13 @@
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)">
 <title>MyTube</title>
+<script>
+  // 画面が一瞬白く光らないように、表示より先にテーマ（端末に合わせる／ライト／ダーク）を当てておく
+  try {
+    var t = (JSON.parse(localStorage.getItem('mytube.settings') || '{}').theme) || 'system';
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch (e) { /* 保存領域が使えないときは端末に合わせる */ }
+</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
@@ -19,10 +26,13 @@
   --nav-h: 52px; --top-h: 52px; --gut: max(12px, env(safe-area-inset-left, 0px));
   color-scheme: light;
 }
+/* Dark palette: follows the phone unless the user picked light, and always applies when the user picked dark */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0f0f0f; --fg: #f1f1f1; --muted: #aaaaaa; --line: #303030; --chip: #272727; --chip-hover: #3f3f3f;
+  :root:not([data-theme="light"]) { --bg: #0f0f0f; --fg: #f1f1f1; --muted: #aaaaaa; --line: #303030; --chip: #272727; --chip-hover: #3f3f3f;
     --accent: #ff4e5f; --surface: #212121; --inv-bg: #f1f1f1; --inv-fg: #0f0f0f; color-scheme: dark; }
 }
+:root[data-theme="dark"] { --bg: #0f0f0f; --fg: #f1f1f1; --muted: #aaaaaa; --line: #303030; --chip: #272727; --chip-hover: #3f3f3f;
+  --accent: #ff4e5f; --surface: #212121; --inv-bg: #f1f1f1; --inv-fg: #0f0f0f; color-scheme: dark; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 a { color: inherit; }
@@ -172,6 +182,9 @@ dialog::backdrop { background: rgba(0,0,0,.5); }
 .sheet-actions button { flex: 1; height: 44px; border-radius: 22px; border: 0; background: var(--chip); font-weight: 500; }
 .sheet-actions .primary { background: var(--inv-bg); color: var(--inv-fg); font-weight: 700; }
 .account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg { display: flex; gap: 3px; padding: 3px; border-radius: 10px; background: var(--chip); }
+.seg button { flex: 1; height: 34px; border: 0; border-radius: 8px; background: none; font-size: 13px; color: var(--muted); }
+.seg button[aria-checked="true"] { background: var(--bg); color: var(--fg); font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
 .account-actions button { height: 36px; padding: 0 16px; border-radius: 18px; border: 0; background: var(--chip); }
 #loginBtn { background: var(--inv-bg); color: var(--inv-fg); font-weight: 600; }
 .kw-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -399,6 +412,13 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
       <button type="button" id="logoutBtn" hidden>ログアウト</button>
     </div>
     <p class="hint" id="accountMsg" aria-live="polite"></p>
+
+    <h3>表示</h3>
+    <div class="seg" role="radiogroup" aria-label="テーマ">
+      <button type="button" role="radio" data-theme-opt="system" aria-checked="true">端末に合わせる</button>
+      <button type="button" role="radio" data-theme-opt="light" aria-checked="false">ライト</button>
+      <button type="button" role="radio" data-theme-opt="dark" aria-checked="false">ダーク</button>
+    </div>
 
     <h3>再生</h3>
     <label class="check"><input type="checkbox" id="autoNext"> 終わったら次の動画を自動で再生</label>
@@ -644,6 +664,6 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- ?v= を更新のたびに変えると、スマホに古い app.js が残らない -->
-<script src="app.js?v=2026112314" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="app.js?v=2026112315" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>

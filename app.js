@@ -275,6 +275,7 @@ const ICONS = {
   like: '<path d="M7 10v11H3V10zM7 10l4-7c1.5 0 2.5 1 2.2 2.6L12.6 9H19a2 2 0 0 1 2 2.3l-1.3 7.5A2 2 0 0 1 17.7 21H7z"/>',
   history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
   settings: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
 };
 function icon(name, cls) {
   const s = h('span', { class: 'ic' + (cls ? ' ' + cls : ''), 'aria-hidden': 'true' });
@@ -767,6 +768,7 @@ function myPageHeader() {
       isLoggedIn()
         ? h('button', { class: 'link', type: 'button', text: 'ログアウト', onclick: () => { logout(); toast('ログアウトしました。'); } })
         : h('button', { class: 'primary-btn', type: 'button', text: 'Googleでログイン', onclick: () => login().catch((e) => setMsg(msg, e.message, true)) })),
+    h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'テーマ（ライト・ダーク）', onclick: openThemeMenu }, icon('moon')),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': '設定', onclick: openSettings }, icon('settings')));
   return h('div', {}, head, msg);
 }
@@ -1086,6 +1088,27 @@ $('loginBtn').addEventListener('click', () => {
     .catch((e) => { $('accountMsg').textContent = e.message; });
 });
 $('logoutBtn').addEventListener('click', () => { logout(); $('accountMsg').textContent = 'ログアウトしました。'; });
+// ---------- テーマ（端末に合わせる／ライト／ダーク） ----------
+const THEME_LABELS = { system: '端末に合わせる', light: 'ライト', dark: 'ダーク' };
+function applyTheme(t) {
+  const theme = THEME_LABELS[t] ? t : 'system';
+  const root = document.documentElement;
+  if (theme === 'system') delete root.dataset.theme; else root.dataset.theme = theme;
+  // スマホ上部のバーの色も合わせる
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    const dark = theme === 'dark' || (theme === 'system' && /dark/.test(m.media));
+    m.content = dark ? '#0f0f0f' : '#ffffff';
+  });
+  document.querySelectorAll('[data-theme-opt]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeOpt === theme)));
+}
+function setTheme(t) { settings.theme = t; persist(); applyTheme(t); }
+function openThemeMenu() {
+  const cur = settings.theme || 'system';
+  openMenu('テーマ', Object.entries(THEME_LABELS).map(([k, label]) => ({ label, selected: k === cur, onclick: () => setTheme(k) })));
+}
+document.querySelectorAll('[data-theme-opt]').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.themeOpt)));
+applyTheme(settings.theme || 'system');
+
 let clearArmed = false;
 $('clearHistory').addEventListener('click', () => {
   const b = $('clearHistory');
