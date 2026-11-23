@@ -1549,6 +1549,8 @@ function renderPlayerInfo(v) {
   setRating('none'); setMsg($('pMsg'), '');
   $('cCount').textContent = '';
   $('cPreview').textContent = 'タップしてコメントを表示';
+  closeChat();
+  $('chatTeaser').hidden = true; chatInfo = null;
   $('autoNextToggle').checked = settings.autoNext;
   renderUpNext();
   $('pInfo').scrollTop = 0;
@@ -1557,10 +1559,11 @@ function renderPlayerInfo(v) {
     apiAuth('GET', 'videos/getRating', { id: v.id }, null, 1)
       .then((r) => { if (token === detailToken) setRating(r.items?.[0]?.rating || 'none'); }).catch(() => {});
   }
-  api('videos', { part: 'snippet,statistics', id: v.id }, 1).then((r) => {
+  api('videos', { part: 'snippet,statistics,liveStreamingDetails', id: v.id }, 1).then((r) => {
     const d = r.items?.[0];
     if (!d || token !== detailToken) return;
     const st = d.statistics || {};
+    setupChat(v, d);
     $('pStats').textContent = `${fmtCount(st.viewCount)} 回視聴 ${fmtAgo(d.snippet.publishedAt)}`;
     likeCount = st.likeCount != null ? +st.likeCount : null;
     setRating(rating);
@@ -1811,6 +1814,51 @@ $('miniPlay').addEventListener('click', togglePlay);
 setMiniPlaying(true);
 
 // ---------- コメント（下から出るシート） ----------
+// ---------- 生放送のチャット／アーカイブのチャットのリプレイ ----------
+// YouTube 公式の埋め込みチャット（API の使用量はかからない）。動画の下、説明やコメントの代わりに表示する
+let chatInfo = null;     // { id, replay }
+let chatSyncTimer = null;
+function setupChat(v, d) {
+  const ls = d.liveStreamingDetails;
+  if (!ls) return; // 生放送ではない普通の動画
+  const live = d.snippet.liveBroadcastContent === 'live';
+  const upcoming = d.snippet.liveBroadcastContent === 'upcoming';
+  const archive = !live && !upcoming && !!ls.actualEndTime;
+  if (!live && !upcoming && !archive) return;
+  chatInfo = { id: v.id, replay: archive };
+  $('chatTeaser').hidden = false;
+  $('chatTeaser').dataset.replay = archive ? '1' : '';
+  $('chatTeaserTitle').textContent = archive ? 'チャットのリプレイ' : 'ライブチャット';
+  $('chatTeaserSub').textContent = live && ls.concurrentViewers ? `${fmtCount(ls.concurrentViewers)}人が視聴中` : upcoming ? '配信開始前' : '';
+}
+function openChat() {
+  if (!chatInfo) return;
+  const dark = document.documentElement.dataset.theme === 'dark' ||
+    (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+  const page = chatInfo.replay ? 'live_chat_replay' : 'live_chat';
+  const f = h('iframe', { title: chatInfo.replay ? 'チャットのリプレイ' : 'ライブチャット', allow: 'clipboard-write',
+    src: `https://www.youtube.com/${page}?v=${encodeURIComponent(chatInfo.id)}&embed_domain=${encodeURIComponent(location.hostname)}${dark ? '&dark_theme=1' : ''}` });
+  $('chatBody').replaceChildren(f);
+  $('chatTitle').textContent = chatInfo.replay ? 'チャットのリプレイ' : 'ライブチャット';
+  $('chatPanel').hidden = false;
+  $('player').classList.add('chat-open');
+  // リプレイは動画の再生位置をチャットに伝えて、その時点のコメントを流す
+  clearInterval(chatSyncTimer);
+  if (chatInfo.replay) {
+    chatSyncTimer = setInterval(() => {
+      try { f.contentWindow?.postMessage({ 'yt-player-video-progress': ytPlayer.getCurrentTime() }, 'https://www.youtube.com'); } catch { /* noop */ }
+    }, 1000);
+  }
+}
+function closeChat() {
+  clearInterval(chatSyncTimer); chatSyncTimer = null;
+  $('chatBody').replaceChildren();
+  $('chatPanel').hidden = true;
+  $('player').classList.remove('chat-open');
+}
+$('chatTeaser').addEventListener('click', openChat);
+$('chatClose').addEventListener('click', closeChat);
+
 $('cTeaser').addEventListener('click', () => {
   const v = current; if (!v) return;
   $('cTitle').textContent = $('cCount').textContent ? `コメント ${$('cCount').textContent}` : 'コメント';
