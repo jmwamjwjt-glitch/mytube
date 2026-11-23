@@ -669,3 +669,13 @@ $('miniExpand').addEventListener('click', showFullPlayer);
 $('miniClose').addEventListener('click', closePlayer);
 $('miniPlay').addEventListener('click', togglePlay);
 setMiniPlaying(true);
+
+// ---------- タブレットの横向き：「次の動画」を右側の列へ移す ----------
+const wideMq = matchMedia('(min-width: 1000px) and (min-height: 601px) and (orientation: landscape)');
+function placeUpNext() {
+  const box = document.querySelector('.upnext');
+  if (wideMq.matches) { if (box.parentElement !== $('pSide')) $('pSide').append(box); }
+  else if (box.parentElement !== $('pInfo')) $('pInfo').append(box);
+}
+wideMq.addEventListener('change', placeUpNext);
+placeUpNext();

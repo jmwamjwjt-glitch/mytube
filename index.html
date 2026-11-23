@@ -405,6 +405,20 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   .player.full .frame { max-width: 960px; margin: 0 auto; }
   .player .info { max-width: 960px; margin: 0 auto; width: 100%; }
 }
+.pside { display: none; }
+/* タブレットの横向き：左に動画と説明、右に「次の動画」（YouTube のタブレット版と同じ並び） */
+@media (min-width: 1000px) and (min-height: 601px) and (orientation: landscape) {
+  .player.full:not(.fs):not(.vfs) { display: grid; column-gap: 20px; padding-left: calc(16px + env(safe-area-inset-left, 0px)); padding-right: env(safe-area-inset-right, 0px);
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 32vw, 460px); grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas: "frame side" "ctrl side" "chat side" "info side"; }
+  .player.full:not(.fs):not(.vfs) .frame { grid-area: frame; max-width: none; margin: 12px 0 0; justify-self: center; border-radius: 12px; overflow: hidden;
+    width: min(100%, calc((100dvh - 240px) * 16 / 9)); }
+  .player.full[data-short="1"]:not(.fs):not(.vfs) .frame { width: auto; height: calc(100dvh - 240px); aspect-ratio: 9/16; }
+  .player.full:not(.fs):not(.vfs) .pctrl { grid-area: ctrl; padding-left: 0; padding-right: 0; }
+  .player.full:not(.fs):not(.vfs) .chatpanel { grid-area: chat; max-height: 40dvh; }
+  .player.full:not(.fs):not(.vfs) .info { grid-area: info; max-width: none; margin: 0; min-height: 0; padding-left: 0; padding-right: 0; }
+  .player.full:not(.fs):not(.vfs) .pside { grid-area: side; display: block; min-height: 0; overflow-y: auto; padding: 4px 16px calc(24px + env(safe-area-inset-bottom, 0px)) 0; }
+}
 </style>
 </head>
 <body>
@@ -796,6 +810,8 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
       <p class="hint" id="upNextEmpty" hidden>この一覧の次の動画はありません。</p>
     </div>
   </div>
+  <!-- タブレットの横向きでは「次の動画」をここ（右側の列）に移す -->
+  <div class="pside" id="pSide"></div>
 </div>
 
 <div class="ptr" id="ptr" hidden aria-hidden="true"><span class="ptr-ic">↻</span><span id="ptrText">引っぱって更新</span></div>
@@ -812,18 +828,18 @@ body.has-mini .toast { bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bo
   });
 </script>
 <!-- 機能ごとのファイル。この順番で読み込む（?v= を更新のたびに変えると、スマホに古いファイルが残らない） -->
-<script src="js/core.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/auth-api.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/videos.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/feed.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/pages.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/settings.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/search-tools.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/player.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/gestures.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/comments-chat.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/home.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/sync.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
-<script src="js/main.js?v=2026112334" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/core.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/auth-api.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/videos.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/feed.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/pages.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/settings.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/search-tools.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/player.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/gestures.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/comments-chat.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/home.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/sync.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
+<script src="js/main.js?v=2026112335" onerror="document.getElementById('bootErr').hidden=false"></script>
 </body>
 </html>
