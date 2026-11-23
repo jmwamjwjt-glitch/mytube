@@ -27,7 +27,7 @@ function onSideTap(e, side) {
 document.querySelector('.pc-left').addEventListener('pointerup', (e) => onSideTap(e, 'left'));
 document.querySelector('.pc-right').addEventListener('pointerup', (e) => onSideTap(e, 'right'));
 
-// ---------- 再生画面：動画（縦向き）や操作バーを下へスワイプすると小窓に ----------
+// ---------- 再生画面：操作バーを下へスワイプすると小窓に（動画の上は YouTube がタップを受け取る） ----------
 const swipe = { y: 0, x: 0, at: 0, active: false, moved: false };
 function swipeStart(e) {
   if (playerMode !== 'full' || isFs() || e.touches.length !== 1) return;
@@ -62,7 +62,7 @@ function swipeEnd(e) {
     setTimeout(() => { p.style.transition = ''; }, 200);
   }
 }
-for (const el of [$('frame'), $('pCtrl')]) {
+for (const el of [$('pCtrl')]) {
   el.addEventListener('touchstart', swipeStart, { passive: true });
   el.addEventListener('touchmove', swipeMove, { passive: false });
   el.addEventListener('touchend', swipeEnd);
