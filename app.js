@@ -1754,7 +1754,7 @@ async function buildRecommendations(progress) {
   }
   const sig = buildSignals(liked);
   const used = new Set(); const sections = [];
-  const keep = (items, n = 20) => items.filter((v) => !used.has(v.id) && !hiddenVideos.has(v.id) && !isWatched(v.id))
+  const keep = (items, n = 20) => items.filter((v) => !isShort(v) && !used.has(v.id) && !hiddenVideos.has(v.id) && !isWatched(v.id))
     .slice(0, n).map((v) => { used.add(v.id); return v; });
 
   // 1. よく見るのに未登録のチャンネルの新着
@@ -1919,7 +1919,7 @@ $('kwDialog').addEventListener('click', (e) => { if (e.target === $('kwDialog'))
 function renderHome(rec) {
   const box = $('homeContent');
   box.replaceChildren();
-  const ok = (v) => !hiddenVideos.has(v.id) && !isWatched(v.id) && !isBlocked(v.channelId);
+  const ok = (v) => !isShort(v) && !hiddenVideos.has(v.id) && !isWatched(v.id) && !isBlocked(v.channelId);
   const secs = (rec?.sections || []).map((s) => ({ ...s, label: secLabel(s), items: s.items.filter(ok) })).filter((s) => s.items.length);
   if (homeFilter !== 'all' && !secs.some((s) => s.label === homeFilter)) homeFilter = 'all';
 
@@ -1931,7 +1931,7 @@ function renderHome(rec) {
   $('homeChips').hidden = false;
 
   if (homeFilter === 'all') {
-    const cont = watchHistory.filter((e) => !e.done && !e.dismissed && e.pos >= RESUME_MIN && !isBlocked(e.channelId)).slice(0, 15);
+    const cont = watchHistory.filter((e) => !isShort(e) && !e.done && !e.dismissed && e.pos >= RESUME_MIN && !isBlocked(e.channelId)).slice(0, 15);
     if (cont.length) box.append(shelf('続きから見る', cont, (v, row, removeRow) => [{ label: '「続きから見る」から外す', onclick: () => {
       const e = histGet(v.id); if (e) { e.dismissed = true; saveHistory(); }
       removeRow();
