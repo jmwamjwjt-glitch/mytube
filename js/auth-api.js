@@ -193,11 +193,12 @@ function searchCachePut(key, data) {
   save('mytube.searchCache', out);
 }
 
-async function api(path, params, cost) {
+// fresh: true … とっておいた検索結果を使わずに検索し直す（ホームの「更新」ボタンなど）
+async function api(path, params, cost, { fresh = false } = {}) {
   if (!settings.apiKey) throw new Error('先に設定からAPIキーを入れてください。');
   const url = buildUrl(path, params);
   const cacheKey = path === 'search' ? url.search : null; // キーを入れる前の条件で覚える
-  if (cacheKey) { const hit = searchCacheGet(cacheKey); if (hit) return hit; }
+  if (cacheKey && !fresh) { const hit = searchCacheGet(cacheKey); if (hit) return hit; }
   url.searchParams.set('key', settings.apiKey);
   const res = await fetch(url);
   addQuota(cost);

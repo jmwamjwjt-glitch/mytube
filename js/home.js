@@ -74,7 +74,39 @@ function buildSignals(liked) {
   return { ch, kw, cat, chNames, nameWords };
 }
 
-async function buildRecommendations(progress) {
+// ---------- 更新のたびに顔ぶれを変える工夫 ----------
+const DAY_MS = 86400000;
+const daysAgo = (d) => new Date(Date.now() - d * DAY_MS).toISOString();
+// ワードの検索は、更新のたびに並び順と期間を変える（同じワードでも違う動画が出る）
+const SEARCH_VARIANTS = [
+  () => ({}),                                                // 関連度順
+  () => ({ order: 'date', publishedAfter: daysAgo(30) }),    // 最近1か月の新しい順
+  () => ({ order: 'viewCount', publishedAfter: daysAgo(90) }), // 最近3か月の再生回数順
+  () => ({ publishedAfter: daysAgo(180) }),                  // 最近半年の関連度順
+  () => ({ order: 'rating', publishedAfter: daysAgo(365) }), // 最近1年の評価順
+];
+const randomOf = (arr) => arr[Math.floor(Math.random() * arr.length)];
+// 点数の高いものほど選ばれやすい「くじ引き」で n 個選ぶ
+function pickWeighted(cands, n) {
+  const pool = cands.slice(); const out = [];
+  while (out.length < n && pool.length) {
+    let r = Math.random() * pool.reduce((a, [, s]) => a + s, 0);
+    let i = 0;
+    for (; i < pool.length - 1; i++) { r -= pool[i][1]; if (r <= 0) break; }
+    out.push(pool.splice(i, 1)[0][0]);
+  }
+  return out;
+}
+// おすすめに出した回数（見ないまま3回出た動画は、しばらく出さない）
+const REC_SEEN_MAX = 3;
+const REC_SEEN_KEEP = 14 * DAY_MS;
+function loadRecSeen() {
+  const m = load('mytube.recSeen', {}); const now = Date.now();
+  for (const [id, [, at]] of Object.entries(m)) if (now - at > REC_SEEN_KEEP) delete m[id];
+  return m;
+}
+
+async function buildRecommendations(progress, { fresh = false } = {}) {
   // 高評価と登録チャンネルを同時に読む（ここではログイン画面は出さない。期限切れなら履歴だけで作る）
   let liked = []; let subs = new Set();
   if (isLoggedIn() && tokenValid()) {
@@ -89,7 +121,10 @@ async function buildRecommendations(progress) {
   }
   const sig = buildSignals(liked);
   const used = new Set();
-  const keep = (items, n = 20) => items.filter((v) => !isShort(v) && !used.has(v.id) && !hiddenVideos.has(v.id) && !isWatched(v.id))
+  const recSeen = loadRecSeen();
+  const seenN = (id) => recSeen[id]?.[0] || 0;
+  const keep = (items, n = 20) => items.filter((v) => !isShort(v) && !used.has(v.id) && !hiddenVideos.has(v.id) && !isWatched(v.id) && seenN(v.id) < REC_SEEN_MAX)
+    .map((v, i) => [v, i]).sort((a, b) => seenN(a[0].id) - seenN(b[0].id) || a[1] - b[1]).map(([v]) => v) // まだ出していない動画を先に
     .slice(0, n).map((v) => { used.add(v.id); return v; });
   const quotaOut = (e) => { if (/上限/.test(e?.message || '')) throw e; return null; };
   const searchParams = (q, extra = {}) => {
@@ -104,10 +139,11 @@ async function buildRecommendations(progress) {
   const hiddenKw = new Set(settings.hiddenKeywords || []);
   const custom = (settings.customKeywords || []).filter((w) => !hiddenKw.has(w));
   const autoCands = topOf(sig.kw).filter(([w, s]) => s >= 1 && !hiddenKw.has(w) && !sig.nameWords.has(w) && !custom.includes(w));
-  const autoKws = autoCands.filter(([, s]) => s >= 1.5).slice(0, settings.autoKwCount ?? 2).map(([w]) => w);
+  // 自動のワードは、上位10語から毎回くじ引きで選ぶ（点数の高いワードほど選ばれやすい）
+  const autoKws = pickWeighted(autoCands.filter(([, s]) => s >= 1.5).slice(0, 10), settings.autoKwCount ?? 2);
   const kwList = [...custom.map((w) => ({ w, mine: true })), ...autoKws.map((w) => ({ w, mine: false }))];
   const kwCandidates = autoCands.map(([w]) => w).filter((w) => !autoKws.includes(w)).slice(0, 12);
-  const gemWords = [...new Set([...custom, ...autoKws, ...autoCands.map(([w]) => w)])].slice(0, 4);
+  const gemWords = pickWeighted([...new Set([...custom, ...autoCands.slice(0, 12).map(([w]) => w)])].map((w, i) => [w, 12 - Math.min(i, 11)]), 4);
   const cats = topOf(sig.cat).filter(([c, s]) => s >= 1 && c !== '22').slice(0, 3);
   progress('おすすめを集めています…');
 
@@ -121,7 +157,7 @@ async function buildRecommendations(progress) {
 
   // 2. ワードで検索（1語100ユニット）
   const kwTasks = kwList.map(({ w }) => (async () => {
-    const r = await api('search', searchParams(w, { maxResults: 25 }), 100);
+    const r = await api('search', searchParams(w, { maxResults: 25, ...randomOf(SEARCH_VARIANTS)() }), 100, { fresh });
     const ids = (r.items || []).filter((it) => it.id?.videoId && !isBlocked(it.snippet?.channelId)).map((it) => it.id.videoId);
     return fetchVideoItems(ids, { lang: true });
   })().catch(quotaOut));
@@ -130,7 +166,7 @@ async function buildRecommendations(progress) {
   const gemTask = gemWords.length ? (async () => {
     const seenCh = new Set(watchHistory.map((e) => e.channelId));
     const r = await api('search', searchParams(gemWords.join('|'), { maxResults: 50, // | は「どれか」
-      publishedAfter: new Date(Date.now() - 7 * 86400000).toISOString() }), 100);
+      publishedAfter: new Date(Date.now() - 7 * 86400000).toISOString() }), 100, { fresh });
     const ids = (r.items || []).filter((it) => it.id?.videoId && !subs.has(it.snippet.channelId) && !seenCh.has(it.snippet.channelId) && !isBlocked(it.snippet.channelId))
       .map((it) => it.id.videoId);
     if (!ids.length) return [];
@@ -194,6 +230,9 @@ async function buildRecommendations(progress) {
     const k = keep((r.items || []).map((v) => toItem(v, {})).filter(Boolean));
     if (k.length) sections.push({ title: '日本の人気動画', items: k, reason: '視聴データがまだ少ないため、人気の動画を表示しています。見るほど、あなた向けに変わっていきます。' });
   }
+  const now = Date.now(); // 今回出した動画を数えておく
+  for (const sec of sections) for (const v of sec.items) recSeen[v.id] = [seenN(v.id) + 1, now];
+  save('mytube.recSeen', recSeen);
   return { at: Date.now(), basis: watchHistory.length + liked.length, sections, kwCandidates };
 }
 
@@ -356,7 +395,7 @@ async function loadHome(force) {
   if (cache) renderHome(cache);
   setMsg(status, 'おすすめを作っています…');
   try {
-    const rec = await buildRecommendations((t) => setMsg(status, t));
+    const rec = await buildRecommendations((t) => setMsg(status, t), { fresh: !!force });
     save('mytube.rec', rec);
     renderHome(rec);
   } catch (e) {
@@ -369,6 +408,6 @@ $('resetRec').addEventListener('click', () => {
   hiddenVideos = new Set(); save('mytube.hiddenVideos', []);
   settings.hiddenKeywords = []; persist();
   watchHistory.forEach((e) => { e.dismissed = false; }); saveHistory();
-  remove('mytube.rec');
+  remove('mytube.rec'); remove('mytube.recSeen');
   $('recMsg').textContent = 'リセットしました。次にホームを開いたときに作り直します。';
 });
